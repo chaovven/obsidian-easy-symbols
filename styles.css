@@ -1,0 +1,5 @@
+.easy-symbols { color: inherit; }
+.easy-symbols-script { white-space: nowrap; }
+.easy-symbols-script sub, .easy-symbols-script sup { font-size: 0.75em; line-height: 0; position: relative; vertical-align: baseline; }
+.easy-symbols-script sub { bottom: -0.28em; }
+.easy-symbols-script sup { top: -0.5em; }
