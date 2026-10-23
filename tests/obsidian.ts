@@ -1,4 +1,6 @@
 import { StateField } from '@codemirror/state';
+import { installDomHelpers } from './dom-helpers';
+if (typeof document !== 'undefined') installDomHelpers(document);
 export const editorLivePreviewField=StateField.define({create:()=>true,update:(value:boolean)=>value});
 export class MarkdownRenderChild {
   disposers:(()=>void)[]=[];
@@ -22,22 +24,30 @@ export class Plugin {
 export class PluginSettingTab {
   containerEl=Object.assign(document.createElement('div'),{empty(this:HTMLElement){this.replaceChildren();}});
   constructor(_app:unknown,_plugin:unknown){}
+  getSettingDefinitions(): {name:string;desc:string;render:(setting:Setting)=>void}[]{return [];}
   display(){}
+  renderDefinitions(){
+    this.containerEl.empty();
+    for(const definition of this.getSettingDefinitions()){
+      const setting=new Setting(this.containerEl).setName(definition.name).setDesc(definition.desc);
+      definition.render(setting);
+    }
+  }
 }
 export class Setting {
   private name:HTMLElement;
-  private description:HTMLElement;
+  descEl:HTMLElement;
   private row:HTMLElement;
   constructor(container:HTMLElement){
     this.row=container.ownerDocument.createElement('div');
     this.name=container.ownerDocument.createElement('div');
     this.name.className='setting-item-name';
-    this.description=container.ownerDocument.createElement('div');
-    this.description.className='setting-item-description';
-    this.row.append(this.name,this.description);container.append(this.row);
+    this.descEl=container.ownerDocument.createElement('div');
+    this.descEl.className='setting-item-description';
+    this.row.append(this.name,this.descEl);container.append(this.row);
   }
   setName(value:string){this.name.textContent=value;return this;}
-  setDesc(value:string|DocumentFragment){this.description.replaceChildren(value);return this;}
+  setDesc(value:string|DocumentFragment){this.descEl.replaceChildren(value);return this;}
   addToggle(callback:(toggle:{setValue(value:boolean):any;onChange(handler:(value:boolean)=>unknown):any})=>void){
     const input=this.row.ownerDocument.createElement('input');input.type='checkbox';this.row.append(input);
     const toggle={

@@ -56,11 +56,18 @@ describe('plugin lifecycle and persistent settings',()=>{
 
 
 describe('settings documentation links',()=>{
-  it('links each setting to its README section and keeps toggles working',async()=>{
+  for(const mode of ['legacy','declarative'] as const) it(`links settings and refreshes both modes with the ${mode} UI`,async()=>{
     const plugin=new EasySymbolsPlugin({} as never,{} as never),host=pluginHost(plugin);
     await plugin.onload();
     const tab=host.settingTab!;
-    tab.display();
+    const showSettings=()=>mode==='legacy'?tab.display():tab.renderDefinitions();
+    showSettings();
+    const source='Text x_i ->';
+    const element=document.createElement('div');element.innerHTML='<p>Text x_i -&gt;</p>';
+    host.postProcessor!(element,{sourcePath:'settings-test.md',getSectionInfo:()=>({text:source,lineStart:0,lineEnd:0}),addChild:()=>{}});
+    const view=new EditorView({state:EditorState.create({doc:source,extensions:[editorLivePreviewField,host.extension as never]}),parent:document.body});
+    expect(element.querySelector('.easy-symbols-symbol')?.textContent).toBe('→');
+    expect(view.dom.querySelector('.easy-symbols-symbol')?.textContent).toBe('→');
     const links=[...tab.containerEl.querySelectorAll('a')];
     const names=[...tab.containerEl.querySelectorAll('.setting-item-name')].map(node=>node.textContent!);
     expect(names).toEqual(['Arrows','Subscripts & superscripts','Math operators','Symbols from commands']);
@@ -80,7 +87,28 @@ describe('settings documentation links',()=>{
     toggles[0].checked=false;toggles[0].dispatchEvent(new Event('change'));
     expect(plugin.settings).toEqual({...DEFAULT_SETTINGS,arrows:false});
     expect(host.storedData).toEqual({...DEFAULT_SETTINGS,arrows:false});
-    tab.display();expect(tab.containerEl.querySelectorAll('a')).toHaveLength(4);
-    plugin.onunload();
+    expect(element.querySelector('.easy-symbols-symbol')).toBeNull();
+    expect(view.dom.querySelector('.easy-symbols-symbol')).toBeNull();
+    expect(element.querySelector('sub')?.textContent).toBe('i');
+    expect(view.state.doc.toString()).toBe(source);
+    showSettings();expect(tab.containerEl.querySelectorAll('a')).toHaveLength(4);
+    plugin.onunload();view.destroy();
+  });
+});
+
+
+describe('searchable settings registration',()=>{
+  it('provides names and descriptions for search without rendering or saving',async()=>{
+    const plugin=new EasySymbolsPlugin({} as never,{} as never),host=pluginHost(plugin);
+    await plugin.onload();
+    const tab=host.settingTab!;
+    const fragmentSpy=vi.spyOn(document,'createDocumentFragment');
+    const saveSpy=vi.spyOn(plugin,'saveData');
+    const definitions=tab.getSettingDefinitions();
+    expect(definitions).toHaveLength(4);
+    expect(definitions.every(definition=>definition.name&&definition.desc&&typeof definition.render==='function')).toBe(true);
+    expect(fragmentSpy).not.toHaveBeenCalled();expect(saveSpy).not.toHaveBeenCalled();
+    expect(tab.containerEl.childNodes).toHaveLength(0);
+    fragmentSpy.mockRestore();saveSpy.mockRestore();plugin.onunload();
   });
 });

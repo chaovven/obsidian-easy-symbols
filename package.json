@@ -1,8 +1,8 @@
 {
   "name": "easy-symbols",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
-  "description": "Type symbols in Obsidian with simple shortcuts.",
+  "description": "Type symbols with simple shortcuts.",
   "scripts": {
     "dev": "node esbuild.config.mjs --watch",
     "build": "tsc --noEmit && node esbuild.config.mjs",

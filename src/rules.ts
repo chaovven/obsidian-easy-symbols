@@ -58,7 +58,7 @@ export function scan(text: string, settings: Settings, offset = 0): Match[] {
       }
     }
     // Consume the entire operator run, even when unknown or its category is disabled.
-    const op = /^[<>!=~+\-]+/.exec(tail);
+    const op = /^[<>!=~+-]+/.exec(tail);
     if (op) {
       const value = (settings.arrows ? ARROWS[op[0]] : undefined) ?? (settings.operators ? OPERATORS[op[0]] : undefined);
       if (value) add(op[0].length, { kind: 'symbol', text: value });

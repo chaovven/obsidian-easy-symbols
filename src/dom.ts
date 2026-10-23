@@ -1,11 +1,13 @@
 import type { Match } from './rules';
 
 export function createSymbolDOM(doc: Document, match: Match): HTMLElement {
-  const span = doc.createElement('span');
-  span.className = `easy-symbols easy-symbols-${match.kind}`;
-  span.setAttribute('aria-label', match.source);
-  span.append(doc.createTextNode(match.text));
-  if (match.sub) { const sub = doc.createElement('sub'); sub.textContent = match.sub; span.append(sub); }
-  if (match.sup) { const sup = doc.createElement('sup'); sup.textContent = match.sup; span.append(sup); }
+  const win = doc.win as typeof window;
+  const span = win.createSpan({
+    cls: `easy-symbols easy-symbols-${match.kind}`,
+    attr: { 'aria-label': match.source },
+    text: match.text,
+  });
+  if (match.sub) span.createEl('sub', { text: match.sub });
+  if (match.sup) span.createEl('sup', { text: match.sup });
   return span;
 }

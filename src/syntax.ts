@@ -31,17 +31,17 @@ export function analyze(source: string): Analysis {
   const html: { value: string; range: Interval }[] = [];
   // Obsidian comments are omitted by the host, including their source-looking contents.
   for (const match of source.matchAll(/%%[\s\S]*?(?:%%|$)/g)) {
-    const range = { from: match.index!, to: match.index! + match[0].length };
+    const range = { from: match.index, to: match.index + match[0].length };
     protectedRanges.push(range); omitted.push(range);
   }
   const wiki = /!?\[\[[^\]\r\n]*(?:\](?!\])[^\]\r\n]*)*\]\]/g;
   for (const match of source.matchAll(wiki)) {
-    const range = { from: match.index!, to: match.index! + match[0].length };
+    const range = { from: match.index, to: match.index + match[0].length };
     protectedRanges.push(range); omitted.push(range);
   }
   // URLs are native identifiers, even where the host has not yet linkified them.
-  for (const match of source.matchAll(/(?:[A-Za-z][A-Za-z0-9+.-]*:\/\/|mailto:|www\.)[^\s<>\[\]]+/g)) {
-    protectedRanges.push({ from: match.index!, to: match.index! + match[0].length });
+  for (const match of source.matchAll(/(?:[A-Za-z][A-Za-z0-9+.-]*:\/\/|mailto:|www\.)[^\s<>[\]]+/g)) {
+    protectedRanges.push({ from: match.index, to: match.index + match[0].length });
   }
   function visit(node: Root | RootContent): void {
     const range = location(node);
@@ -62,7 +62,7 @@ export function analyze(source: string): Analysis {
       const boundaries = new Map<number, number>();
       const unit = /\\[!"#$%&'()*+,\-./:;<=>?@[\]\\^_`{|}~]|&(?:#[xX][0-9a-fA-F]+|#\d+|[A-Za-z][A-Za-z0-9]+);|\r\n|[\s\S]/g;
       for (const part of raw.matchAll(unit)) {
-        const start = range.from + part.index!;
+        const start = range.from + part.index;
         boundaries.set(start, value.length);
         value += decodeString(part[0]).replace(/\r\n?/g, '\n');
         boundaries.set(start + part[0].length, value.length);
@@ -74,7 +74,7 @@ export function analyze(source: string): Analysis {
       if (value === node.value) runs.push({ ...range, value, boundaries });
       return;
     }
-    if ('children' in node) for (const child of node.children) visit(child as RootContent);
+    if ('children' in node) for (const child of node.children) visit(child);
   }
   visit(root);
   // Native inline HTML can contain ordinary text AST nodes. Protect the whole element.
@@ -82,7 +82,7 @@ export function analyze(source: string): Analysis {
   for (const token of html) {
     for (const match of token.value.matchAll(/<\/?([A-Za-z][\w:-]*)\b[^>]*>/g)) {
       const tag = match[1].toLowerCase();
-      const from = token.range.from + match.index!;
+      const from = token.range.from + match.index;
       const to = from + match[0].length;
       if (match[0].startsWith('</')) {
         const index = stack.map(x => x.tag).lastIndexOf(tag);

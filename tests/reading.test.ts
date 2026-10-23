@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { JSDOM } from 'jsdom';
+import { installDomHelpers } from './dom-helpers';
 import MarkdownIt from 'markdown-it';
 import { ReadingRender } from '../src/reading';
 import { DEFAULT_SETTINGS as all } from '../src/rules';
@@ -7,6 +8,7 @@ import { analyze, matchesFor } from '../src/syntax';
 const markdown = new MarkdownIt({ html:true, linkify:true });
 function section(source:string, html = markdown.render(source)) {
   const document = new JSDOM('<main></main>').window.document;
+  installDomHelpers(document);
   const element = document.querySelector('main')!;
   element.innerHTML = html;
   return { element, render: new ReadingRender(element,source) };
@@ -20,6 +22,7 @@ describe('source-aware DOM rendering', () => {
     expect(element.querySelector('sup')?.textContent).toBe('2');
     expect(element.querySelector('a')?.getAttribute('href')).toBe('https://example.com/x_i');
     expect(element.querySelector('a sub')?.textContent).toBe('j');
+    expect([...element.querySelectorAll('.easy-symbols,sub,sup')].every(node=>node.ownerDocument===element.ownerDocument)).toBe(true);
     expect(element.textContent).toContain('[TODO] xi2 α → ≤ xj');
     expect(source).toBe('[TODO] x_i^2 \\alpha -> <= [x_j](https://example.com/x_i)');
   });

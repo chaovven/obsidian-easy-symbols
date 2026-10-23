@@ -63,29 +63,45 @@ export default class EasySymbolsPlugin extends Plugin {
 }
 class EasySymbolsSettings extends PluginSettingTab {
   constructor(app: App, readonly plugin: EasySymbolsPlugin) { super(app, plugin); }
-  display(): void {
-    this.containerEl.empty();
+  getSettingDefinitions() {
     const options: [keyof Settings, string, string, string][] = [
       ['arrows', 'Arrows', 'Show typed arrows as symbols, such as -> for → and <=> for ⇔.', 'arrows'],
       ['scripts', 'Subscripts & superscripts', 'Show x_i as xᵢ and x^2 as x². Use a single letter before the subscript or superscript.', 'subscripts--superscripts'],
       ['operators', 'Math operators', 'Show comparisons and other operators as symbols, such as >= → ≥ and != → ≠. The input <= always means ≤.', 'math-operators'],
       ['latex', 'Symbols from commands', 'Show backslash commands as symbols, such as \\alpha → α and \\infty → ∞. Includes arrow and math operator commands.', 'symbols-from-commands'],
     ];
-    for (const [key, name, description, section] of options) {
-      const doc = this.containerEl.ownerDocument;
-      const details = doc.createDocumentFragment();
-      details.append(description + ' ');
-      const link = doc.createElement('a');
-      link.textContent = 'View all supported shortcuts';
-      link.href = `https://github.com/chaovven/obsidian-easy-symbols#${section}`;
-      link.className = 'external-link';
-      link.target = '_blank';
-      link.rel = 'noopener noreferrer';
-      link.setAttribute('aria-label', `View all supported shortcuts: ${name}`);
-      details.append(link);
-      new Setting(this.containerEl).setName(name).setDesc(details).addToggle(toggle => {
-        toggle.setValue(this.plugin.settings[key]).onChange(async value => { await this.plugin.changeSetting(key, value); });
-      });
+    return options.map(([key, name, description, section]) => ({
+      name,
+      desc: description,
+      // Search indexing reads the text above without creating any DOM.
+      render: (setting: Setting) => {
+        const win = setting.descEl.win as typeof window;
+        const details = win.createFragment();
+        details.append(description + ' ');
+        details.createEl('a', {
+          text: 'View all supported shortcuts',
+          cls: 'external-link',
+          attr: {
+            href: `https://github.com/chaovven/obsidian-easy-symbols#${section}`,
+            target: '_blank',
+            rel: 'noopener noreferrer',
+            'aria-label': `View all supported shortcuts: ${name}`,
+          },
+        });
+        setting.setDesc(details).addToggle(toggle => {
+          toggle.setValue(this.plugin.settings[key]).onChange(async value => {
+            await this.plugin.changeSetting(key, value);
+          });
+        });
+      },
+    }));
+  }
+  // Obsidian before 1.13.0 uses this fallback; both paths share the same controls.
+  display(): void {
+    this.containerEl.empty();
+    for (const definition of this.getSettingDefinitions()) {
+      const setting = new Setting(this.containerEl).setName(definition.name);
+      definition.render(setting);
     }
   }
 }

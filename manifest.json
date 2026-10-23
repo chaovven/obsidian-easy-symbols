@@ -1,9 +1,9 @@
 {
   "id": "easy-symbols",
   "name": "Easy Symbols",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "minAppVersion": "1.8.7",
-  "description": "Type symbols in Obsidian with simple shortcuts.",
+  "description": "Type symbols with simple shortcuts.",
   "author": "Chao Wen",
   "isDesktopOnly": false,
   "authorUrl": "https://github.com/chaovven"
