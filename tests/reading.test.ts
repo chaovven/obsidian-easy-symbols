@@ -33,7 +33,7 @@ describe('source-aware DOM rendering', () => {
     const scripts=[...element.querySelectorAll('.easy-symbols-script')];
     expect(scripts).toHaveLength(2);
     expect(scripts[0].innerHTML).toBe(scripts[1].innerHTML);
-    expect(scripts[1].getAttribute('aria-label')).toBe('x^2_i');
+    expect(scripts[1].getAttribute('data-source')).toBe('x^2_i');
     render.restore(); expect(element.innerHTML).toBe(original);
   });
   it('repeat processing and toggle refresh are idempotent and restore parsed DOM', () => {
@@ -93,7 +93,7 @@ describe('source-aware DOM rendering', () => {
   it('DOM output and editor source rules have identical match sets', () => {
     const source='[TODO] A_123 + z_j ~= x^2 +- 1; P <=> Q; \\forall \\alpha -> \\infty';
     const {element,render}=section(source);expect(render.render(all)).toBe(true);
-    expect([...element.querySelectorAll('.easy-symbols')].map(x=>x.getAttribute('aria-label'))).toEqual(matchesFor(analyze(source),all).map(x=>x.source));
+    expect([...element.querySelectorAll('.easy-symbols')].map(x=>x.getAttribute('data-source'))).toEqual(matchesFor(analyze(source),all).map(x=>x.source));
   });
 });
 

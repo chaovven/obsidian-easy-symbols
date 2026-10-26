@@ -2,11 +2,7 @@
 
 **Easy Symbols** is an Obsidian plugin that makes it easy to write arrows, symbols, subscripts, and superscripts in your notes.
 
-You're taking notes and want to add an arrow, a subscript, or a Greek letter. A whole math expression feels like extra work for one small symbol.
 
-With **Easy Symbols**, just type `->`, `x_i`, or `\alpha` to see →, x<sub>i</sub>, or α. **No `$` signs needed. Your Markdown stays unchanged.**
-
-Works offline in **Live Preview** and **Reading Mode**. Move your cursor away to see the symbols. Move it back to edit. Source Mode shows your original text.
 
 ## Arrows
 
@@ -20,19 +16,24 @@ Works offline in **Live Preview** and **Reading Mode**. Move your cursor away to
 | `<-->` | ⟷ |
 | `=>` | ⇒ |
 | `<=>` | ⇔ |
+| `^\|` or `\|^` | ↑ |
+| `v\|` or `\|v` | ↓ |
 
 ## Subscripts & superscripts
 
-Start with a single letter. Subscripts and superscripts can contain letters and numbers, in either order.
+Type **one letter**, then `_` (subscript) or `^` (superscript). **A space ends it.**
 
 | What you type | What you see |
 | --- | --- |
 | `x_i` | x<sub>i</sub> |
-| `A_123` | A<sub>123</sub> |
-| `x_ij` | x<sub>ij</sub> |
-| `x^2` | x<sup>2</sup> |
-| `x^23` | x<sup>23</sup> |
-| `x_i^2`, `x^2_i` | x<sub>i</sub><sup>2</sup> |
+| `x^-1` | x<sup>-1</sup> |
+| `x_i+1` | x<sub>i+1</sub> |
+| `x_i + 1` | x<sub>i</sub> + 1 |
+| `x_i^2` | x<sub>i</sub><sup>2</sup> |
+
+Note: 
+- `{ }` is optional: `x_{i+1}` is the same as `x_i+1`. Use it to include spaces, e.g. `x_{i + 1}`.
+- `AA_i` stays as plain text: only **one** letter before `_` or `^`.
 
 ## Math operators
 
@@ -76,6 +77,8 @@ Backslash commands are case-sensitive. This setting includes arrow and operator 
 | `\lor`, `\vee` | ∨ |
 | `\rightarrow` | → |
 | `\leftarrow` | ← |
+| `\uparrow` | ↑ |
+| `\downarrow` | ↓ |
 | `\leftrightarrow` | ↔ |
 | `\longrightarrow` | ⟶ |
 | `\longleftarrow` | ⟵ |
@@ -101,7 +104,7 @@ Choose which conversions to enable in **Settings → Easy Symbols**. All four ar
 ## Notes
 
 - Code, existing math formulas, note properties, and link destinations stay unchanged.
-- Braces and nested expressions are unsupported; use Obsidian’s built-in math for full equations.
+- Nested braces are unsupported; use Obsidian’s built-in math for full equations.
 - Live Preview’s table editor and some embedded views may show the original text.
 - Mobile support, minimum-version compatibility, and performance on large notes still need testing.
 

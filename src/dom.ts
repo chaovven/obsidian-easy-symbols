@@ -4,7 +4,7 @@ export function createSymbolDOM(doc: Document, match: Match): HTMLElement {
   const win = doc.win as typeof window;
   const span = win.createSpan({
     cls: `easy-symbols easy-symbols-${match.kind}`,
-    attr: { 'aria-label': match.source },
+    attr: { 'data-source': match.source },
     text: match.text,
   });
   if (match.sub) span.createEl('sub', { text: match.sub });

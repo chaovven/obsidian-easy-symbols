@@ -16,10 +16,10 @@ export const COMMANDS: Readonly<Record<string, string>> = {
   alpha: 'α', beta: 'β', gamma: 'γ', delta: 'δ', theta: 'θ', lambda: 'λ', mu: 'μ', sigma: 'σ', omega: 'ω', Delta: 'Δ',
   infty: '∞', emptyset: '∅', sum: '∑', partial: '∂', nabla: '∇', forall: '∀', exists: '∃', in: '∈', subset: '⊂',
   land: '∧', wedge: '∧', lor: '∨', vee: '∨',
-  rightarrow: '→', leftarrow: '←', leftrightarrow: '↔', longrightarrow: '⟶', longleftarrow: '⟵', longleftrightarrow: '⟷',
+  rightarrow: '→', leftarrow: '←', uparrow: '↑', downarrow: '↓', leftrightarrow: '↔', longrightarrow: '⟶', longleftarrow: '⟵', longleftrightarrow: '⟷',
   Rightarrow: '⇒', Leftarrow: '⇐', Leftrightarrow: '⇔', geq: '≥', leq: '≤', neq: '≠', approx: '≈', pm: '±', mp: '∓',
 };
-export const ARROWS: Readonly<Record<string, string>> = { '->': '→', '<-': '←', '<->': '↔', '-->': '⟶', '<--': '⟵', '<-->': '⟷', '=>': '⇒', '<=>': '⇔' };
+export const ARROWS: Readonly<Record<string, string>> = { '->': '→', '<-': '←', '<->': '↔', '-->': '⟶', '<--': '⟵', '<-->': '⟷', '=>': '⇒', '<=>': '⇔', '^|': '↑', 'v|': '↓', '|^': '↑', '|v': '↓' };
 export const OPERATORS: Readonly<Record<string, string>> = { '>=': '≥', '<=': '≤', '!=': '≠', '~=': '≈', '+-': '±', '-+': '∓' };
 export interface Match {
   from: number;
@@ -51,11 +51,16 @@ export function scan(text: string, settings: Settings, offset = 0): Match[] {
       } else i += Math.min(2, tail.length);
       continue;
     }
-    if (settings.scripts && /[A-Za-z]/.test(text[i]) && (i === 0 || !identifier.test(text[i - 1]))) {
-      const script = /^([A-Za-z])(?:_([A-Za-z0-9]+)(?:\^([A-Za-z0-9]+))?|\^([A-Za-z0-9]+)(?:_([A-Za-z0-9]+))?)/.exec(tail);
-      if (script && !identifier.test(text[i + script[0].length] ?? '')) {
-        add(script[0].length, { kind: 'script', text: script[1], sub: script[2] ?? script[5], sup: script[3] ?? script[4] }); continue;
-      }
+    // ^| v| |^ |v are vertical arrows; a v must not be part of a word.
+    const vertical = /^(?:[\^v]\||\|[\^v])/.exec(tail);
+    if (vertical && (vertical[0] !== 'v|' || i === 0 || !identifier.test(text[i - 1]))
+      && (vertical[0] !== '|v' || !identifier.test(text[i + 2] ?? ''))) {
+      if (settings.arrows) add(2, { kind: 'symbol', text: ARROWS[vertical[0]] }); else i += 2;
+      continue;
+    }
+    if (settings.scripts && /[A-Za-z]/.test(text[i]) && /[_^]/.test(text[i + 1] ?? '') && (i === 0 || !identifier.test(text[i - 1]))) {
+      const script = readScript(tail);
+      if (script) { add(script.length, { kind: 'script', text: text[i], sub: script.sub, sup: script.sup }); continue; }
     }
     // Consume the entire operator run, even when unknown or its category is disabled.
     const op = /^[<>!=~+-]+/.exec(tail);
@@ -68,4 +73,31 @@ export function scan(text: string, settings: Settings, offset = 0): Match[] {
     i++;
   }
   return result;
+}
+
+/** One letter, then _ or ^. A script runs until whitespace; { } is an optional wrapper. The first opposite mark switches. */
+function readScript(tail: string): { length: number; sub?: string; sup?: string } | undefined {
+  const result: { length: number; sub?: string; sup?: string } = { length: 1 };
+  let mark = tail[1];
+  while (mark === '_' || mark === '^') {
+    const key = mark === '_' ? 'sub' : 'sup';
+    if (result[key] !== undefined) break;
+    const start = result.length + 1;
+    let end: number, value: string;
+    if (tail[start] === '{') {
+      end = tail.indexOf('}', start);
+      if (end < 0 || /[{\r\n]/.test(tail.slice(start + 1, end))) break;
+      value = tail.slice(start + 1, end); end++;
+    } else {
+      const other = mark === '_' ? '^' : '_';
+      end = start;
+      while (end < tail.length && !/\s/.test(tail[end]) && (tail[end] !== other || result.sub !== undefined || result.sup !== undefined)) end++;
+      value = tail.slice(start, end);
+    }
+    // An empty or broken second part leaves the first one intact.
+    if (!value) break;
+    result[key] = value; result.length = end;
+    mark = tail[end];
+  }
+  return result.sub ?? result.sup ? result : undefined;
 }

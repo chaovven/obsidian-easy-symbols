@@ -16,11 +16,22 @@ describe('explicit mappings', () => {
       expect(rendered(source)).toEqual([expect.objectContaining({source, text:'x', sub:'i', sup:'2', from:0, to:5})]);
     });
   }
-  for (const source of ['file_name','user_id','AB_12','12x_i','中文x_i','x_i_j','x^2_i_j','x^2_i^3','x_i^2_j','x_{i+1}','x^2^3','_x_i_']) {
+  for (const source of ['file_name','user_id','AB_12','aa_1','12x_i','中文x_i','_x_i_','x_ i','x^','x_{}','x_{a{b}}']) {
     it(`does not take a name tail or unsupported syntax: ${source}`, () => expect(rendered(source)).toEqual([]));
   }
+  const spaceRule: [string, string?, string?][] = [
+    ['x_i+1', 'i+1'], ['x_{i+1}', 'i+1'], ['x^2+1', undefined, '2+1'], ['x^-1', undefined, '-1'], ['e^x-1', undefined, 'x-1'],
+    ['x_i,', 'i,'], ['x_{i + 1}', 'i + 1'], ['x_{i*2}', 'i*2'], ['a_1+b_1', '1+b_1'], ['x_i_j', 'i_j'], ['x^2^3', undefined, '2^3'],
+    ['x_i^2_j', 'i', '2_j'], ['x_{i+1}^{2}', 'i+1', '2'], ['x_{i+1}^2', 'i+1', '2'],
+  ];
+  for (const [source, sub, sup] of spaceRule) {
+    it(`a space ends a script: ${source}`, () => expect(rendered(source)).toEqual([expect.objectContaining({ source, text: source[0], sub, sup })]));
+  }
+  it('an empty second part keeps the first', () => expect(rendered('x_i^ y').map(x => x.source)).toEqual(['x_i']));
+  it('a space ends a script before later text', () => expect(rendered('x_i + 1 and x^2 ,').map(x => [x.source, x.sub ?? x.sup])).toEqual([['x_i', 'i'], ['x^2', '2']]));
   it('whole commands only', () => expect(rendered('\\infinity \\Alpha \\alphaBeta \\unknown')).toEqual([]));
   it('operator runs are atomic', () => expect(rendered('==> <==> ---> <----> >=> +-- !=!')).toEqual([]));
+  it('v| and |v only as whole tokens', () => expect(rendered('lev| |value v| ^| |v |^').map(x => x.text)).toEqual(['↓','↑','↓','↑']));
   it('<= is always a comparison', () => expect(rendered('<= \\Leftarrow').map(x => x.text)).toEqual(['≤','⇐']));
   it('ordinary typography stays unchanged', () => expect(rendered('... -- ---- (c) (tm)')).toEqual([]));
 });
@@ -44,7 +55,7 @@ describe('native Markdown protection', () => {
   });
   it('does not consume emphasis delimiters', () => {
     expect(rendered('_x_i_').map(x => x.source)).toEqual([]);
-    expect(rendered('x_i_ and _x_')).toEqual([]);
+    expect(rendered('x_i_ and _x_').map(x => x.sub)).toEqual(['i_']);
   });
   it('converts a normal link label while keeping its target out of matches', () => expect(rendered('[x_i \\alpha ->](target_x_i)').map(x => x.source)).toEqual(['x_i','\\alpha','->']));
   it('keeps all source offsets exact across escapes/entities', () => {
