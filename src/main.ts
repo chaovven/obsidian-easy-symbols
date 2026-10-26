@@ -75,10 +75,9 @@ class EasySymbolsSettings extends PluginSettingTab {
       desc: description,
       // Search indexing reads the text above without creating any DOM.
       render: (setting: Setting) => {
-        const win = setting.descEl.win as typeof window;
-        const details = win.createFragment();
-        details.append(description + ' ');
-        details.createEl('a', {
+        // A fragment passed to setDesc can be stringified on newer Obsidian; build the link in place.
+        setting.setDesc(description + ' ');
+        setting.descEl.createEl('a', {
           text: 'View all supported shortcuts',
           cls: 'external-link',
           attr: {
@@ -88,7 +87,7 @@ class EasySymbolsSettings extends PluginSettingTab {
             'aria-label': `View all supported shortcuts: ${name}`,
           },
         });
-        setting.setDesc(details).addToggle(toggle => {
+        setting.addToggle(toggle => {
           toggle.setValue(this.plugin.settings[key]).onChange(async value => {
             await this.plugin.changeSetting(key, value);
           });
