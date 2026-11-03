@@ -21,23 +21,43 @@ export function editorExtension(getSettings: () => Settings, isEnabled: () => bo
     decorations: DecorationSet = Decoration.none;
     private analysis: Analysis;
     private matches: Match[];
-    private composing = false;
+    private needsBuild = false;
     private destroyed = false;
     constructor(readonly view: EditorView) {
       views.add(view);
       this.analysis = analyze(view.state.doc.toString());
       this.matches = matchesFor(this.analysis, getSettings());
-      this.build();
+      if (view.compositionStarted) this.needsBuild = true;
+      else this.build();
     }
     update(update: ViewUpdate): void {
       const refresh = update.transactions.some(transaction => transaction.effects.some(effect => effect.is(refreshSymbols)));
       // Parse only on document changes; cursor moves and scrolling reuse this cache.
       if (update.docChanged) this.analysis = analyze(update.state.doc.toString());
       if (update.docChanged || refresh) this.matches = matchesFor(this.analysis, getSettings());
-      if (update.docChanged || refresh || update.selectionSet || update.viewportChanged || update.startState.field(editorLivePreviewField, false) !== update.state.field(editorLivePreviewField, false)) this.build();
+      this.needsBuild ||= this.view.compositionStarted || update.docChanged || refresh || update.selectionSet || update.viewportChanged || update.startState.field(editorLivePreviewField, false) !== update.state.field(editorLivePreviewField, false);
+      if (!this.needsBuild) return;
+      if (this.view.compositionStarted) {
+        // Keep existing widgets stable while the IME owns the composing DOM.
+        // Map their positions, remove invalid/selected matches, but add no widgets.
+        if (!isEnabled() || !this.view.state.field(editorLivePreviewField, false)) {
+          this.decorations = Decoration.none;
+        } else {
+          const matches = new Map(this.matches.map(match => [match.from, match]));
+          this.decorations = this.decorations.map(update.changes).update({ filter: (from, to, decoration) => {
+            const match = matches.get(from);
+            const widget = decoration.spec.widget as SymbolWidget;
+            return match?.to === to && match.source === widget.match.source && match.kind === widget.match.kind
+              && !selectionTouches(match, update.state.selection.ranges);
+          } });
+        }
+      } else {
+        this.build();
+        this.needsBuild = false;
+      }
     }
     private build(): void {
-      if (!isEnabled() || !this.view.state.field(editorLivePreviewField, false) || this.composing || this.view.composing) {
+      if (!isEnabled() || !this.view.state.field(editorLivePreviewField, false)) {
         this.decorations = Decoration.none; return;
       }
       const decorations = [];
@@ -53,17 +73,16 @@ export function editorExtension(getSettings: () => Settings, isEnabled: () => bo
       }
       this.decorations = Decoration.set(decorations, true);
     }
-    composition(start: boolean): void {
-      this.composing = start;
-      if (start) this.view.dispatch({ effects: refreshSymbols.of() });
-      else queueMicrotask(() => { if (!this.destroyed) this.view.dispatch({ effects: refreshSymbols.of() }); });
+    compositionEnded(): void {
+      // Wait for CodeMirror to finish handling the event and clear its IME state.
+      queueMicrotask(() => { if (!this.destroyed) this.view.dispatch({ effects: refreshSymbols.of() }); });
     }
     destroy(): void { this.destroyed = true; this.decorations = Decoration.none; views.delete(this.view); }
   }, {
     decorations: plugin => plugin.decorations,
-    eventHandlers: {
-      compositionstart() { this.composition(true); },
-      compositionend() { this.composition(false); },
+    eventObservers: {
+      // Observers still run when another extension consumes the end event.
+      compositionend() { this.compositionEnded(); },
     },
   });
 }
