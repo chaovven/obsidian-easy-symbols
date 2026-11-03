@@ -14,6 +14,18 @@ function section(source:string, html = markdown.render(source)) {
   return { element, render: new ReadingRender(element,source) };
 }
 describe('source-aware DOM rendering', () => {
+  it('renders numeric superscripts while preserving numeric filenames and code', () => {
+    const {element,render}=section('10^n 2^32.txt 2^3_4 2026_11_03 123_report.pdf `10^n`');
+    const original=element.innerHTML;
+    expect(render.render(all)).toBe(true);
+    expect([...element.querySelectorAll('sup')].map(node=>node.textContent)).toEqual(['n','32.txt','3_4']);
+    expect(element.querySelector('.easy-symbols')?.firstChild?.textContent).toBe('10');
+    expect(element.querySelector('sub')).toBeNull();
+    expect(element.textContent).toContain('2026_11_03 123_report.pdf');
+    expect(element.querySelector('code')?.textContent).toBe('10^n');
+    render.render({...all,scripts:false});expect(element.innerHTML).toBe(original);
+    render.render(all);render.restore();expect(element.innerHTML).toBe(original);
+  });
   it('renders all categories with real sub/sup DOM and preserves link behavior', () => {
     const source='[TODO] x_i^2 \\alpha -> <= [x_j](https://example.com/x_i)';
     const {element,render}=section(source);

@@ -1,8 +1,6 @@
 # Easy Symbols
 
-**Easy Symbols** is an Obsidian plugin that makes it easy to write arrows, symbols, subscripts, and superscripts in your notes.
-
-
+Easy Symbols is an Obsidian plugin that makes it easy to write symbols.
 
 ## Arrows
 
@@ -21,7 +19,9 @@
 
 ## Subscripts & superscripts
 
-Type **one letter**, then `_` (subscript) or `^` (superscript). **A space ends it.**
+- Support **one letter** before `^` (superscript) or `_` (subscript). 
+- Support **one or more digits** before `^` (superscript).
+
 
 | What you type | What you see |
 | --- | --- |
@@ -30,10 +30,14 @@ Type **one letter**, then `_` (subscript) or `^` (superscript). **A space ends i
 | `x_i+1` | x<sub>i+1</sub> |
 | `x_i + 1` | x<sub>i</sub> + 1 |
 | `x_i^2` | x<sub>i</sub><sup>2</sup> |
+| `2^32` | 2<sup>32</sup> |
+| `10^n` | 10<sup>n</sup> |
 
 Note: 
+- A **space** ends the subscript or superscript mode.
 - `{ }` is optional: `x_{i+1}` is the same as `x_i+1`. Use it to include spaces, e.g. `x_{i + 1}`.
-- `AA_i` stays as plain text: only **one** letter before `_` or `^`.
+- Multi-letter bases are unsupported: `AA_i` stays as plain text.
+- Digits do not support subscripts: `101_2` and `2026_11_03` stay as plain text.
 
 ## Math operators
 
@@ -46,11 +50,11 @@ Note:
 | `+-` | ± |
 | `-+` | ∓ |
 
-`<=` means ≤. For ⇐, use `\Leftarrow`.
+Note:
+- `<=` means ≤. For ⇐, use `\Leftarrow`.
 
 ## Symbols from commands
 
-Backslash commands are case-sensitive. This setting includes arrow and operator commands.
 
 | What you type | What you see |
 | --- | --- |

@@ -66,7 +66,7 @@ class EasySymbolsSettings extends PluginSettingTab {
   getSettingDefinitions() {
     const options: [keyof Settings, string, string, string][] = [
       ['arrows', 'Arrows', 'Show typed arrows as symbols, such as -> for → and <=> for ⇔.', 'arrows'],
-      ['scripts', 'Subscripts & superscripts', 'Show x_i as xᵢ and x^2 as x². Use a single letter before the subscript or superscript.', 'subscripts--superscripts'],
+      ['scripts', 'Subscripts & superscripts', 'Show x_i as xᵢ and x^2 as x². Use one letter for subscripts or superscripts, or one or more digits for superscripts only.', 'subscripts--superscripts'],
       ['operators', 'Math operators', 'Show comparisons and other operators as symbols, such as >= → ≥ and != → ≠. The input <= always means ≤.', 'math-operators'],
       ['latex', 'Symbols from commands', 'Show backslash commands as symbols, such as \\alpha → α and \\infty → ∞. Includes arrow and math operator commands.', 'symbols-from-commands'],
     ];

@@ -36,6 +36,40 @@ describe('explicit mappings', () => {
   it('ordinary typography stays unchanged', () => expect(rendered('... -- ---- (c) (tm)')).toEqual([]));
 });
 
+describe('numeric superscripts', () => {
+  const cases = [
+    ['2^32', '2', '32'], ['10^6', '10', '6'], ['10^n', '10', 'n'], ['0010^-3', '0010', '-3'],
+    ['12345678901234567890^n', '12345678901234567890', 'n'],
+    ['2^32.txt', '2', '32.txt'], ['2^32+1', '2', '32+1'], ['2^(3+1)', '2', '(3+1)'],
+    ['2^3_4', '2', '3_4'], ['2^3^4', '2', '3^4'], ['2^{n + 1}', '2', 'n + 1'], ['2^中文', '2', '中文'],
+  ];
+  for (const [source, text, sup] of cases) it(`renders ${source} with no subscript`, () => {
+    expect(rendered(source)).toEqual([{from:0, to:source.length, source, kind:'script', text, sub:undefined, sup}]);
+  });
+  for (const source of ['101_2', '2026_11_03', '123_report.pdf', '101_2^3', 'version10^6', '中文10^6', '12x^2', '10^', '10^{}', '10^{n{m}}']) {
+    it(`leaves numeric subscripts, identifier tails and incomplete syntax alone: ${source}`, () => {
+      expect(rendered(source)).toEqual([]);
+    });
+  }
+  it('uses whitespace and braces to end superscripts without switching to subscripts', () => {
+    const source='2^32 + 1\n10^{n + 1}_2 and 3^n\t4^m';
+    expect(rendered(source).map(match=>[match.source,match.sup,match.sub])).toEqual([
+      ['2^32','32',undefined], ['10^{n + 1}','n + 1',undefined], ['3^n','n',undefined], ['4^m','m',undefined],
+    ]);
+    for (const match of rendered(source)) expect(source.slice(match.from,match.to)).toBe(match.source);
+  });
+  it('uses existing punctuation boundaries without a special filename or path rule', () => {
+    expect(rendered('folder/10^6 2^{32},').map(match=>[match.source,match.text,match.sup])).toEqual([
+      ['10^6','10','6'], ['2^{32}','2','32'],
+    ]);
+  });
+  it('preserves native code, math, links, escapes and properties', () => {
+    for (const source of ['`2^32`', '```\n10^n\n```', '$2^32$', '[file](2^32.txt)', '[[2^32]]', '\\2^32', '2\\^32', '---\npower: 2^32\n---', 'https://example.com/2^32']) {
+      expect(rendered(source),source).toEqual([]);
+    }
+  });
+});
+
 describe('native Markdown protection', () => {
   const protectedCases = [
     '```text\n[TODO] x_i -> \\alpha\n```', '~~~\nx_i -> \\alpha\n~~~', '    x_i -> \\alpha', '`x_i -> \\alpha`',
@@ -66,10 +100,10 @@ describe('native Markdown protection', () => {
 });
 
 describe('settings', () => {
-  const source = '[TODO] x_i \\alpha \\Rightarrow \\geq -> <=';
+  const source = '[TODO] x_i 10^n \\alpha \\Rightarrow \\geq -> <=';
   for (const key of Object.keys(all) as (keyof Settings)[]) it(`independent ${key} switch`, () => {
     const only = {scripts:false,latex:false,arrows:false,operators:false,[key]:true};
-    const expected = {scripts:['x_i'],latex:['\\alpha','\\Rightarrow','\\geq'],arrows:['->'],operators:['<=']}[key];
+    const expected = {scripts:['x_i','10^n'],latex:['\\alpha','\\Rightarrow','\\geq'],arrows:['->'],operators:['<=']}[key];
     expect(rendered(source,only).map(x => x.source)).toEqual(expected);
   });
   it('validates persistent data', () => expect(loadSettings({latex:false, scripts:'false',arrows:null,status:true})).toEqual({...all,latex:false}));

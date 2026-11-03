@@ -58,9 +58,12 @@ export function scan(text: string, settings: Settings, offset = 0): Match[] {
       if (settings.arrows) add(2, { kind: 'symbol', text: ARROWS[vertical[0]] }); else i += 2;
       continue;
     }
-    if (settings.scripts && /[A-Za-z]/.test(text[i]) && /[_^]/.test(text[i + 1] ?? '') && (i === 0 || !identifier.test(text[i - 1]))) {
-      const script = readScript(tail);
-      if (script) { add(script.length, { kind: 'script', text: text[i], sub: script.sub, sup: script.sup }); continue; }
+    if (settings.scripts && (i === 0 || !identifier.test(text[i - 1]))) {
+      const base = /^(?:[A-Za-z](?=[_^])|[0-9]+(?=\^))/.exec(tail)?.[0];
+      if (base) {
+        const script = readScript(tail, base);
+        if (script) { add(script.length, { kind: 'script', text: base, sub: script.sub, sup: script.sup }); continue; }
+      }
     }
     // Consume the entire operator run, even when unknown or its category is disabled.
     const op = /^[<>!=~+-]+/.exec(tail);
@@ -75,11 +78,12 @@ export function scan(text: string, settings: Settings, offset = 0): Match[] {
   return result;
 }
 
-/** One letter, then _ or ^. A script runs until whitespace; { } is an optional wrapper. The first opposite mark switches. */
-function readScript(tail: string): { length: number; sub?: string; sup?: string } | undefined {
-  const result: { length: number; sub?: string; sup?: string } = { length: 1 };
-  let mark = tail[1];
-  while (mark === '_' || mark === '^') {
+/** Letters allow both scripts; digits allow superscripts only. Whitespace ends a script unless wrapped in { }. */
+function readScript(tail: string, base: string): { length: number; sub?: string; sup?: string } | undefined {
+  const allowSubscripts = /[A-Za-z]/.test(base);
+  const result: { length: number; sub?: string; sup?: string } = { length: base.length };
+  let mark = tail[base.length];
+  while (mark === '^' || (allowSubscripts && mark === '_')) {
     const key = mark === '_' ? 'sub' : 'sup';
     if (result[key] !== undefined) break;
     const start = result.length + 1;
@@ -91,7 +95,7 @@ function readScript(tail: string): { length: number; sub?: string; sup?: string 
     } else {
       const other = mark === '_' ? '^' : '_';
       end = start;
-      while (end < tail.length && !/\s/.test(tail[end]) && (tail[end] !== other || result.sub !== undefined || result.sup !== undefined)) end++;
+      while (end < tail.length && !/\s/.test(tail[end]) && (!allowSubscripts || tail[end] !== other || result.sub !== undefined || result.sup !== undefined)) end++;
       value = tail.slice(start, end);
     }
     // An empty or broken second part leaves the first one intact.

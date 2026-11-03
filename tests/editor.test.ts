@@ -50,6 +50,21 @@ describe('CodeMirror decorations never edit source',()=>{
     expect(view.dom.querySelectorAll('.easy-symbols')).toHaveLength(1);
     view.destroy();
   });
+  it('renders numeric superscripts and reveals their entire multi-digit base for editing',()=>{
+    const source='Test 10^n 2^32.txt 2^3_4 2026_11_03';
+    const {view,settings}=create(source);
+    const superscripts=()=>Array.from(view.dom.querySelectorAll('sup')).map(node=>node.textContent);
+    expect(superscripts()).toEqual(['n','32.txt','3_4']);
+    expect(view.dom.querySelector('.easy-symbols')?.firstChild?.textContent).toBe('10');
+    expect(view.dom.querySelector('sub')).toBeNull();
+    view.dispatch({selection:{anchor:6}});
+    expect(superscripts()).toEqual(['32.txt','3_4']);
+    view.dispatch({selection:{anchor:0}});
+    expect(superscripts()).toEqual(['n','32.txt','3_4']);
+    settings({...DEFAULT_SETTINGS,scripts:false});expect(superscripts()).toEqual([]);
+    settings(DEFAULT_SETTINGS);expect(superscripts()).toEqual(['n','32.txt','3_4']);
+    expect(view.state.doc.toString()).toBe(source);view.destroy();
+  });
   it('shows only original source when not in Live Preview',()=>{
     const {view}=create(undefined,false);expect(view.dom.querySelector('.easy-symbols')).toBeNull();view.destroy();
   });
@@ -73,16 +88,17 @@ describe('CodeMirror decorations never edit source',()=>{
     expect(view.state.doc.toString()).toBe('你Test x_i -> \\alpha\nEnd');
     expect(view.dom.querySelectorAll('.easy-symbols')).toHaveLength(3);view.destroy();
   });
-  it('defers new widgets until composition ends, even away from the caret',async()=>{
+  it.each(['x_i','10^n'])('defers a new %s widget until composition ends, even away from the caret',async(script)=>{
     const {view}=create('Test ');
     view.dispatch({selection:{anchor:5}});
     view.contentDOM.dispatchEvent(new CompositionEvent('compositionstart',{bubbles:true}));
-    view.dispatch({changes:{from:5,insert:'x_i 你好'},selection:{anchor:11},userEvent:'input.type.compose'});
+    const inserted=script+' 你好';
+    view.dispatch({changes:{from:5,insert:inserted},selection:{anchor:5+inserted.length},userEvent:'input.type.compose'});
     expect(view.dom.querySelector('.easy-symbols')).toBeNull();
     view.contentDOM.dispatchEvent(new CompositionEvent('compositionend',{bubbles:true}));
     await Promise.resolve();
-    expect(view.dom.querySelector('sub')?.textContent).toBe('i');
-    expect(view.state.doc.toString()).toBe('Test x_i 你好');view.destroy();
+    expect(view.dom.querySelector('sub, sup')?.textContent).toBe(script==='x_i'?'i':'n');
+    expect(view.state.doc.toString()).toBe('Test '+inserted);view.destroy();
   });
   it('recovers when another extension handles compositionend before ordinary handlers',async()=>{
     const {view}=create('Test ');
