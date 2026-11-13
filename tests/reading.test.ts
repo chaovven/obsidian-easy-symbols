@@ -1,133 +1,41 @@
 import { describe, expect, it } from 'vitest';
-import { JSDOM } from 'jsdom';
-import { installDomHelpers } from './dom-helpers';
 import MarkdownIt from 'markdown-it';
-import { ReadingRender } from '../src/reading';
-import { DEFAULT_SETTINGS as all } from '../src/rules';
-import { analyze, matchesFor } from '../src/syntax';
-const markdown = new MarkdownIt({ html:true, linkify:true });
-function section(source:string, html = markdown.render(source)) {
-  const document = new JSDOM('<main></main>').window.document;
-  installDomHelpers(document);
-  const element = document.querySelector('main')!;
-  element.innerHTML = html;
-  return { element, render: new ReadingRender(element,source) };
-}
-describe('source-aware DOM rendering', () => {
-  it('renders numeric superscripts while preserving numeric filenames and code', () => {
-    const {element,render}=section('10^n 2^32.txt 2^3_4 2026_11_03 123_report.pdf `10^n`');
-    const original=element.innerHTML;
-    expect(render.render(all)).toBe(true);
-    expect([...element.querySelectorAll('sup')].map(node=>node.textContent)).toEqual(['n','32.txt','3_4']);
-    expect(element.querySelector('.easy-symbols')?.firstChild?.textContent).toBe('10');
-    expect(element.querySelector('sub')).toBeNull();
-    expect(element.textContent).toContain('2026_11_03 123_report.pdf');
-    expect(element.querySelector('code')?.textContent).toBe('10^n');
-    render.render({...all,scripts:false});expect(element.innerHTML).toBe(original);
-    render.render(all);render.restore();expect(element.innerHTML).toBe(original);
-  });
-  it('renders all categories with real sub/sup DOM and preserves link behavior', () => {
-    const source='[TODO] x_i^2 \\alpha -> <= [x_j](https://example.com/x_i)';
-    const {element,render}=section(source);
-    expect(render.render(all)).toBe(true);
-    expect(element.querySelector('sub')?.textContent).toBe('i');
-    expect(element.querySelector('sup')?.textContent).toBe('2');
-    expect(element.querySelector('a')?.getAttribute('href')).toBe('https://example.com/x_i');
-    expect(element.querySelector('a sub')?.textContent).toBe('j');
-    expect([...element.querySelectorAll('.easy-symbols,sub,sup')].every(node=>node.ownerDocument===element.ownerDocument)).toBe(true);
-    expect(element.textContent).toContain('[TODO] xi2 α → ≤ xj');
-    expect(source).toBe('[TODO] x_i^2 \\alpha -> <= [x_j](https://example.com/x_i)');
-  });
-  it('renders either script order identically and restores the original source order', () => {
-    const {element,render}=section('x_i^2 and x^2_i');
-    const original=element.innerHTML;
-    expect(render.render(all)).toBe(true);
-    const scripts=[...element.querySelectorAll('.easy-symbols-script')];
-    expect(scripts).toHaveLength(2);
-    expect(scripts[0].innerHTML).toBe(scripts[1].innerHTML);
-    expect(scripts[1].getAttribute('data-source')).toBe('x^2_i');
-    render.restore(); expect(element.innerHTML).toBe(original);
-  });
-  it('repeat processing and toggle refresh are idempotent and restore parsed DOM', () => {
-    const {element,render}=section('[DONE] x_i -> \\alpha');
-    const original=element.innerHTML;
-    render.render(all); const first=element.innerHTML;
-    render.render(all); expect(element.innerHTML).toBe(first);
-    expect(element.querySelectorAll('.easy-symbols .easy-symbols')).toHaveLength(0);
-    render.render({...all,scripts:false}); expect(element.querySelector('sub')).toBeNull();
-    render.restore(); expect(element.innerHTML).toBe(original);
-    render.restore(); expect(element.innerHTML).toBe(original);
-  });
-  it('handles split text nodes without wrapping native elements', () => {
-    const {element,render}=section('Test x_i -> \\alpha');
-    const p=element.querySelector('p')!;p.textContent='';
-    for(const value of ['Test x','_','i -','> \\al','pha'])p.append(element.ownerDocument.createTextNode(value));
-    expect(render.render(all)).toBe(true);
-    expect(element.querySelectorAll('.easy-symbols')).toHaveLength(3);
-    render.restore();expect(p.textContent).toBe('Test x_i -> \\alpha');
-  });
-  it('does not reinterpret escaped commands, entities or escaped punctuation', () => {
-    const source='\\\\alpha &bsol;alpha &#45;> x&#95;i \\[TODO] &amp; \\alpha ->';
-    const {element,render}=section(source);
-    expect(render.render(all)).toBe(true);
-    expect([...element.querySelectorAll('.easy-symbols')].map(x=>x.textContent)).toEqual(['α','→']);
-    expect(element.textContent).toContain('\\alpha \\alpha -> x_i [TODO] & α →');
-  });
-  it('keeps URL, autolink, code, HTML and native emphasis intact', () => {
-    const source='https://example.com/x_i <https://example.com/x_i> `x_i` <span title="x_i">x_i</span> *word* **x_j** ->';
-    const {element,render}=section(source);
-    expect(render.render(all)).toBe(true);
-    expect(element.querySelector('code')?.textContent).toBe('x_i');
-    expect(element.querySelector('span[title]')?.outerHTML).toBe('<span title="x_i">x_i</span>');
-    expect(element.querySelectorAll('a')).toHaveLength(2);
-    expect(element.querySelector('strong sub')?.textContent).toBe('j');
-  });
-  it('handles Obsidian internal links without guessing their display text', () => {
-    const source='[[x_i|alias]] and x_j ->';
-    const {element,render}=section(source,'<p><a class="internal-link" data-href="x_i">alias</a> and x_j -&gt;</p>');
-    expect(render.render(all)).toBe(true);expect(element.querySelector('a')?.textContent).toBe('alias');
-    expect(element.querySelector('sub')?.textContent).toBe('j');
-  });
-  it('skips MathJax DOM while rendering surrounding text', () => {
-    const {element,render}=section('$x_i$ and x_j ->','<p><span class="math"><mjx-container>xᵢ</mjx-container></span> and x_j -&gt;</p>');
-    expect(render.render(all)).toBe(true);expect(element.querySelector('mjx-container')?.textContent).toBe('xᵢ');
-    expect(element.querySelector('sub')?.textContent).toBe('j');
-  });
-  it('fails closed when native DOM and source differ', () => {
-    const {element,render}=section('x_i ->','<p>unrelated x_i -&gt;</p>');
-    expect(render.render(all)).toBe(false);expect(element.querySelector('.easy-symbols')).toBeNull();
-  });
-  it('does not replace native structural elements across a matching range', () => {
-    const {element,render}=section('x_i','<p>x<span>_i</span></p>');
-    expect(render.render(all)).toBe(true);expect(element.querySelector('span')?.textContent).toBe('_i');
-    expect(element.querySelector('sub')).toBeNull();
-  });
-  it('DOM output and editor source rules have identical match sets', () => {
-    const source='[TODO] A_123 + z_j ~= x^2 +- 1; P <=> Q; \\forall \\alpha -> \\infty';
-    const {element,render}=section(source);expect(render.render(all)).toBe(true);
-    expect([...element.querySelectorAll('.easy-symbols')].map(x=>x.getAttribute('data-source'))).toEqual(matchesFor(analyze(source),all).map(x=>x.source));
-  });
-});
+import { completionAt } from '../src/syntax';
+import { DEFAULT_SETTINGS } from '../src/rules';
 
-describe('native render discrepancies are kept safe',()=>{
-  it('keeps email autolinks intact while rendering adjacent prose',()=>{
-    const {element,render}=section('<x_i@example.com> x_i@example.com and x_j');
-    expect(render.render(all)).toBe(true);
-    expect(element.querySelectorAll('a')).toHaveLength(2);
-    expect(element.querySelector('a .easy-symbols')).toBeNull();
-    expect(element.querySelector('sub')?.textContent).toBe('j');
+// Reading Mode needs no plugin: saved Unicode is ordinary Markdown text.
+describe('portable saved Unicode', () => {
+  const markdown=new MarkdownIt();
+  it('renders completed text without plugin DOM, HTML scripts, or italic markers', () => {
+    let source='';
+    for(const token of ['x_i','+','x_j','=','1']) {
+      if(source) source+=' ';
+      source+=token;
+      const match=completionAt(source,source.length,DEFAULT_SETTINGS);
+      if(match) source=source.slice(0,match.from)+match.text;
+    }
+    expect(source).toBe('xᵢ + xⱼ = 1');
+    expect(markdown.render(source)).toBe('<p>xᵢ + xⱼ = 1</p>\n');
   });
-  it('omits host comments while rendering adjacent prose',()=>{
-    const {element,render}=section('Before %% x_i -> %% and x_j','<p>Before  and x_j</p>');
-    expect(render.render(all)).toBe(true);expect(element.querySelector('sub')?.textContent).toBe('j');
+  it('keeps converted superscripts when copied without the plugin', () => {
+    expect(markdown.render('x²⁺¹y and ÷ and τᵢ and 𝑥ᵢ')).toBe('<p>x²⁺¹y and ÷ and τᵢ and 𝑥ᵢ</p>\n');
   });
-  it('keeps an HTML block unchanged if its raw contents prevent exact alignment',()=>{
-    const {element,render}=section('<div>\nx_i ->\n</div>');
-    const original=element.innerHTML;render.render(all);expect(element.innerHTML).toBe(original);
+  it('preserves the typed order of mixed Unicode scripts in ordinary Markdown', () => {
+    const source='xᵢʲ and x²ᵢ';
+    expect(markdown.render(source)).toBe('<p>xᵢʲ and x²ᵢ</p>\n');
   });
-  it('renders tables without touching delimiters',()=>{
-    const source='| Test | Other |\n| --- | --- |\n| x_i -> | \\alpha <= |';
-    const {element,render}=section(source);expect(render.render(all)).toBe(true);
-    expect(element.querySelector('td sub')?.textContent).toBe('i');expect(element.querySelectorAll('td .easy-symbols')).toHaveLength(4);
+  it('renders completed multi-letter bases as plain Unicode text', () => {
+    const source = ['filename_i', 'length^2', 'filename_i^2']
+      .map(token => {
+        const match = completionAt(token, token.length, DEFAULT_SETTINGS)!;
+        return token.slice(0, match.from) + match.text;
+      }).join(' and ');
+    expect(markdown.render(source)).toBe('<p>filenameᵢ and length² and filename_i²</p>\n');
+  });
+  it('preserves earlier date separators after completing the nearest subscript', () => {
+    const token='2026_11_03';
+    const match=completionAt(token,token.length,DEFAULT_SETTINGS)!;
+    const result=token.slice(0,match.from)+match.text;
+    expect(markdown.render(result)).toBe('<p>2026_11₀₃</p>\n');
   });
 });

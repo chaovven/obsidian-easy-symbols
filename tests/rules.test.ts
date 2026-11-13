@@ -1,127 +1,144 @@
 import { describe, expect, it } from 'vitest';
-import { ARROWS, COMMANDS, DEFAULT_SETTINGS as all, OPERATORS, loadSettings, scan, type Settings } from '../src/rules';
-import { analyze, matchesFor } from '../src/syntax';
-const rendered = (source: string, settings: Settings = all) => matchesFor(analyze(source), settings);
+import { ARROWS, COMMANDS, DEFAULT_SETTINGS as all, OPERATORS, SUBSCRIPTS, SUPERSCRIPTS, conversionAt, loadSettings } from '../src/rules';
+import { completionAt } from '../src/syntax';
+const complete = (source: string) => completionAt(source, source.length, all);
+function convertedText(source: string, position = source.length) {
+  const match = completionAt(source, position, all);
+  return match && source.slice(0, match.from) + match.text + source.slice(match.to);
+}
 
-describe('explicit mappings', () => {
+describe('whole Unicode completions', () => {
   for (const [source, target] of Object.entries({ ...ARROWS, ...OPERATORS, ...Object.fromEntries(Object.entries(COMMANDS).map(([key, value]) => [`\\${key}`, value])) })) {
-    it(`${source} → ${target}`, () => expect(rendered(`Test ${source}.`).map(x => x.text)).toEqual([target]));
-  }
-  it('leaves former status labels unchanged', () => expect(rendered('[TODO] [DOING] [DONE] [Todo] [todo]')).toEqual([]));
-  for (const source of ['A_1','A_123','z_j','x_ij','x^2','x^23','x_i^2','x^2_i','x^2_3','x^Ab91_Za93','a_b','x_Za93^Ab91']) {
-    it(`real scripts: ${source}`, () => expect(rendered(source)).toEqual([expect.objectContaining({ source, kind: 'script' })]));
-  }
-  for (const source of ['x_i^2', 'x^2_i']) {
-    it(`combined scripts retain both fields: ${source}`, () => {
-      expect(rendered(source)).toEqual([expect.objectContaining({source, text:'x', sub:'i', sup:'2', from:0, to:5})]);
+    it(`${source} → ${target}`, () => {
+      const input = `Test ${source}`;
+      expect(complete(input)).toEqual({from:5, to:input.length, source, text:target});
     });
   }
-  for (const source of ['file_name','user_id','AB_12','aa_1','12x_i','中文x_i','_x_i_','x_ i','x^','x_{}','x_{a{b}}']) {
-    it(`does not take a name tail or unsupported syntax: ${source}`, () => expect(rendered(source)).toEqual([]));
-  }
-  const spaceRule: [string, string?, string?][] = [
-    ['x_i+1', 'i+1'], ['x_{i+1}', 'i+1'], ['x^2+1', undefined, '2+1'], ['x^-1', undefined, '-1'], ['e^x-1', undefined, 'x-1'],
-    ['x_i,', 'i,'], ['x_{i + 1}', 'i + 1'], ['x_{i*2}', 'i*2'], ['a_1+b_1', '1+b_1'], ['x_i_j', 'i_j'], ['x^2^3', undefined, '2^3'],
-    ['x_i^2_j', 'i', '2_j'], ['x_{i+1}^{2}', 'i+1', '2'], ['x_{i+1}^2', 'i+1', '2'],
+  const examples = [
+    ['x^2', 'x²'], ['x^3', 'x³'], ['x^4', 'x⁴'], ['10^5', '10⁵'], ['a^n', 'aⁿ'], ['x^-2', 'x⁻²'], ['m^2', 'm²'], ['2^n', '2ⁿ'],
+    ['x^2+1', 'x²⁺¹'], ['2^32', '2³²'], ['10^-3', '10⁻³'], ['x_i', 'xᵢ'], ['x_1', 'x₁'], ['x_12', 'x₁₂'], ['x_max', 'xₘₐₓ'],
+    ['x_i+1', 'xᵢ₊₁'], ['x^(n+1)', 'x⁽ⁿ⁺¹⁾'], ['x_(i+1)', 'x₍ᵢ₊₁₎'], ['x^A', 'xᴬ'], ['x^−2', 'x⁻²'],
+    ['τ_i','τᵢ'], ['α^2','α²'], ['Σ_1','Σ₁'], ['é^2','é²'], ['e\u0301^2','e\u0301²'],
+    ['𝑥_i','𝑥ᵢ'], ['字^2','字²'], ['x\u20D7^2','x\u20D7²'], ['x_β','xᵦ'], ['x^β','xᵝ'], ['x^θ','xᶿ'],
+    ['x_i^j','x_iʲ'], ['x_12^3','x_12³'], ['x^2_i','x^2ᵢ'], ['x_i+1^2','x_i+1²'], ['x^2+1_i','x^2+1ᵢ'],
+    ['τ_i^j','τ_iʲ'], ['xᵢ^j','xᵢʲ'], ['x²_i','x²ᵢ'], ['τᵢ^2','τᵢ²'], ['x₁₂^3','x₁₂³'],
+    ['𝑥ᵢ^2','𝑥ᵢ²'], ['e\u0301ᵢ^2','e\u0301ᵢ²'], ['x⃗ᵢ^2','x⃗ᵢ²'],
+    ['filename_i','filenameᵢ'], ['length^2','length²'], ['version_2','version₂'], ['file_name','fileₙₐₘₑ'],
+    ['AA_i','AAᵢ'], ['12x_i','12xᵢ'], ['file2_i','file2ᵢ'], ['中文x_i','中文xᵢ'],
+    ['aτ_i','aτᵢ'], ['αβ_i','αβᵢ'], ['ae\u0301^2','ae\u0301²'], ['e\u0301x_i','e\u0301xᵢ'], ['𝑥x_i','𝑥xᵢ'],
+    ['filename_i^2','filename_i²'], ['filename^2_i','filename^2ᵢ'], ['filenameᵢ^2','filenameᵢ²'],
+    ['filename²_i','filename²ᵢ'], ['aaᵢ^2','aaᵢ²'], ['αβᵢ^2','αβᵢ²'],
+    ['1_1','1₁'], ['101_2','101₂'], ['10_i^2','10_i²'], ['10^2_i','10^2ᵢ'],
+    ['10²_i','10²ᵢ'], ['10₁^2','10₁²'],
+    ['2026_11_03','2026_11₀₃'], ['x_i_j','x_iⱼ'], ['x^2^3','x^2³'], ['x^2+y^2','x^2+y²'],
+    ['x_q^2','x_q²'], ['x_^2','x_²'], ['x^_i','x^ᵢ'], ['x_i^j_k','x_i^jₖ'], ['x^2_i^3','x^2_i³'],
+    ['xᵢ_j','xᵢⱼ'], ['x²^3','x²³'], ['xᵢ^j_k','xᵢ^jₖ'], ['xᵢ²_j','xᵢ²ⱼ'], ['x²ᵢ^3','x²ᵢ³'],
+    ['x²a_i','x²aᵢ'], ['filename_i_j','filename_iⱼ'], ['filename^2^3','filename^2³'],
+    ['filenameᵢ_j','filenameᵢⱼ'], ['filename²^3','filename²³'], ['filenameᵢ²_j','filenameᵢ²ⱼ'],
+    ['filename²a_i','filename²aᵢ'], ['filenameᵢa_i','filenameᵢaᵢ'], ['\\filename_i','\\filenameᵢ'],
+    ['\\tau_i','\\tauᵢ'], ['\u0301x_i','\u0301xᵢ'], ['∞_i','∞ᵢ'], ['||^2','||²'], ['_i','ᵢ'], ['^2','²'],
   ];
-  for (const [source, sub, sup] of spaceRule) {
-    it(`a space ends a script: ${source}`, () => expect(rendered(source)).toEqual([expect.objectContaining({ source, text: source[0], sub, sup })]));
-  }
-  it('an empty second part keeps the first', () => expect(rendered('x_i^ y').map(x => x.source)).toEqual(['x_i']));
-  it('a space ends a script before later text', () => expect(rendered('x_i + 1 and x^2 ,').map(x => [x.source, x.sub ?? x.sup])).toEqual([['x_i', 'i'], ['x^2', '2']]));
-  it('whole commands only', () => expect(rendered('\\infinity \\Alpha \\alphaBeta \\unknown')).toEqual([]));
-  it('operator runs are atomic', () => expect(rendered('==> <==> ---> <----> >=> +-- !=!')).toEqual([]));
-  it('v| and |v only as whole tokens', () => expect(rendered('lev| |value v| ^| |v |^').map(x => x.text)).toEqual(['↓','↑','↓','↑']));
-  it('<= is always a comparison', () => expect(rendered('<= \\Leftarrow').map(x => x.text)).toEqual(['≤','⇐']));
-  it('ordinary typography stays unchanged', () => expect(rendered('... -- ---- (c) (tm)')).toEqual([]));
-});
-
-describe('numeric superscripts', () => {
-  const cases = [
-    ['2^32', '2', '32'], ['10^6', '10', '6'], ['10^n', '10', 'n'], ['0010^-3', '0010', '-3'],
-    ['12345678901234567890^n', '12345678901234567890', 'n'],
-    ['2^32.txt', '2', '32.txt'], ['2^32+1', '2', '32+1'], ['2^(3+1)', '2', '(3+1)'],
-    ['2^3_4', '2', '3_4'], ['2^3^4', '2', '3^4'], ['2^{n + 1}', '2', 'n + 1'], ['2^中文', '2', '中文'],
-  ];
-  for (const [source, text, sup] of cases) it(`renders ${source} with no subscript`, () => {
-    expect(rendered(source)).toEqual([{from:0, to:source.length, source, kind:'script', text, sub:undefined, sup}]);
+  for (const [source, text] of examples) it(`completes ${source} atomically`, () => {
+    expect(convertedText(source)).toBe(text);
   });
-  for (const source of ['101_2', '2026_11_03', '123_report.pdf', '101_2^3', 'version10^6', '中文10^6', '12x^2', '10^', '10^{}', '10^{n{m}}']) {
-    it(`leaves numeric subscripts, identifier tails and incomplete syntax alone: ${source}`, () => {
-      expect(rendered(source)).toEqual([]);
-    });
-  }
-  it('uses whitespace and braces to end superscripts without switching to subscripts', () => {
-    const source='2^32 + 1\n10^{n + 1}_2 and 3^n\t4^m';
-    expect(rendered(source).map(match=>[match.source,match.sup,match.sub])).toEqual([
-      ['2^32','32',undefined], ['10^{n + 1}','n + 1',undefined], ['3^n','n',undefined], ['4^m','m',undefined],
-    ]);
-    for (const match of rendered(source)) expect(source.slice(match.from,match.to)).toBe(match.source);
+  it('treats parentheses as script characters, not mathematical grouping', () => {
+    expect(complete('f(x^2)')).toEqual({from:3,to:6,source:'^2)',text:'²⁾'});
   });
-  it('uses existing punctuation boundaries without a special filename or path rule', () => {
-    expect(rendered('folder/10^6 2^{32},').map(match=>[match.source,match.text,match.sup])).toEqual([
-      ['10^6','10','6'], ['2^{32}','2','32'],
-    ]);
+  it('replaces only the nearest marker and its suffix, preserving exact cursor offsets', () => {
+    expect(complete('x^3 and x_i')).toEqual({from:9,to:11,source:'_i',text:'ᵢ'});
+    expect(completionAt('x^2 trailing', 3, all)).toEqual({from:1,to:3,source:'^2',text:'²'});
+    expect(convertedText('x^2 trailing', 3)).toBe('x² trailing');
+    expect(complete('Test 𝑥_i')).toEqual({from:7,to:9,source:'_i',text:'ᵢ'});
+    expect(complete('Test 𝑥nameᵢ^2')).toEqual({from:12,to:14,source:'^2',text:'²'});
+    expect(complete('2026_11_03')).toEqual({from:7,to:10,source:'_03',text:'₀₃'});
+    expect(complete('x_i^2')).toEqual({from:3,to:5,source:'^2',text:'²'});
   });
-  it('preserves native code, math, links, escapes and properties', () => {
-    for (const source of ['`2^32`', '```\n10^n\n```', '$2^32$', '[file](2^32.txt)', '[[2^32]]', '\\2^32', '2\\^32', '---\npower: 2^32\n---', 'https://example.com/2^32']) {
-      expect(rendered(source),source).toEqual([]);
+  it('completes a comparison at the start of a line before Markdown can treat it as a quote', () => {
+    expect(complete('>=')?.text).toBe('≥');
+  });
+  for (const source of [
+    'x_q','x_AB','x_iq','x^{32}','x_{i}','x^2,','x^2.','x^','x_','x_ i','x^😀',
+    'x^2 ', 'user_id','x^\\alpha',
+    '\\infinity','\\unknown','\\uparrow','\\downarrow','^|','|^','v|','|v','==>','!=!',
+    'constructor','toString','__proto__','\\constructor','\\toString','\\hasOwnProperty',
+    'τ_q','τ_AB','τ_iq','x_α','x^α',
+    'x^2_q','x_i^q','x_i^','x^2_','xᵢ^q',
+    'filename_','filename^','filename_q','filename_iq','filename_AB','filename_{i}',
+    'filename_i^q','x_i^2q','x_i^{2}','x_i^😀','x_i^2,','x_i^2 ','x_i\n2','x_i\t2',
+  ]) it(`keeps unsupported input intact: ${source}`, () => expect(complete(source)).toBeUndefined());
+  it('uses the same nearest-script rule regardless of the preceding text', () => {
+    for (const prefix of ['', 'x', 'filename', '1', '101', '∞', '😀', '𝑥', '2026_11', 'x_q', 'xᵢ', 'x²']) {
+      expect(convertedText(prefix + '_i')).toBe(prefix + 'ᵢ');
+      expect(convertedText(prefix + '^2')).toBe(prefix + '²');
+      for (const suffix of ['_', '_q', '_{i}', '^2q']) {
+        expect(complete(prefix + suffix)).toBeUndefined();
+      }
+    }
+  });
+  it('maps every advertised script character to one real Unicode character', () => {
+    for (const [marker, mapping] of [['^', SUPERSCRIPTS], ['_', SUBSCRIPTS]] as const) {
+      for (const [source, value] of Object.entries(mapping)) {
+        expect(Array.from(value)).toHaveLength(1);
+        expect(value.normalize('NFKC')).toBe(source === '-' ? '−' : source);
+        expect(conversionAt(`x${marker}${source}`, 2 + source.length, all)?.text).toBe(value);
+      }
     }
   });
 });
 
-describe('native Markdown protection', () => {
+describe('Markdown source protection', () => {
   const protectedCases = [
-    '```text\n[TODO] x_i -> \\alpha\n```', '~~~\nx_i -> \\alpha\n~~~', '    x_i -> \\alpha', '`x_i -> \\alpha`',
-    '---\nlabel: x_i -> \\alpha\n---', '$x_i -> \\alpha$', '$$\nx_i -> \\alpha\n$$',
-    '![x_i -> \\alpha](image_x_i.png)', '[safe](https://example.com/x_i->alpha)',
-    '<https://example.com/x_i>', 'https://example.com/x_i->alpha', 'www.example.com/x_i',
-    '<span title="x_i ->">x_i -> \\alpha</span>', '<!-- x_i -> \\alpha -->',
-    '<div>\nx_i -> \\alpha\n</div>', '[[x_i -> \\alpha|x_i -> \\beta]]', '![[x_i#x_i]]',
-    '*x_i*', '__x_i__', '\\[TODO]', '\\\\alpha', 'x&#95;i', '&bsol;alpha', '&#45;>',
-    '[TODO](target)', '[TODO][id]\n\n[id]: /x_i', '[id]: /x_i "\\alpha"',
-  ];
-  for (const source of protectedCases) it(`protects ${JSON.stringify(source)}`, () => {
-    // Math inside emphasis is valid if the whole shorthand is in a single text leaf.
-    if (source === '*x_i*') {
-      expect(rendered(source).map(x => x.source)).toEqual(['x_i']);
-    } else expect(rendered(source)).toEqual([]);
+    ['`x^2`',4], ['`x^2',4], ['``some ` text x^2',16], ['`some\ntext x^2',14],
+    ['```text\nx^2',11], ['~~~\nx^2',7], ['    x^2',7],
+    ['$x^2$',4], ['$x^2',4], ['$$\nx^2',6],
+    ['---\nkey: x^2\n---',12], ['---\nkey: x^2',12],
+    ['[label](x^2)',11], ['[label](x^2',11], ['[a](ok) [b](x^2',16], ['[a](path/(x^2',14],
+    ['[[x^2]]',5], ['[[x^2',5], ['[[note|x^2',10], ['![[x^2',6],
+    ['![x^2](image)',5], ['<span title="x^2">text</span>',16], ['<span>x^2</span>',9], ['<span>x^2',9],
+    ['<!-- x^2 -->',8], ['%% x^2 %%',6], ['%% x^2',6],
+    ['https://example.com/x^2',23], ['www.example.com/x^2',19], ['[ref]: https://example.com/x^2',30],
+    ['[x^2]\n\n[x^2]: target',4], ['[x^2][ref]\n\n[ref]: target',4],
+    ['x\\^2',4], ['\\\\alpha',7], ['x&#94;2',7],
+    ['`x_i^j',6], ['$x_i^j',6], ['[label](x_i^j',13], ['[[xᵢ^j',6],
+  ] as const;
+  for (const [source, position] of protectedCases) it(`does not edit ${JSON.stringify(source)}`, () => {
+    // Locate the shorthand rather than depending on the surrounding delimiter lengths.
+    const end = source.includes('x^2') ? source.indexOf('x^2') + 3 : position;
+    expect(completionAt(source,end,all)).toBeUndefined();
   });
-  it('does not consume emphasis delimiters', () => {
-    expect(rendered('_x_i_').map(x => x.source)).toEqual([]);
-    expect(rendered('x_i_ and _x_').map(x => x.sub)).toEqual(['i_']);
+  it('allows text after closed native syntax', () => {
+    for (const source of ['`code` x^2','$x^3$ x^2','[link](target) x^2','%% comment %% x^2','<span>text</span> x^2','---\na: 1\n---\n\nx^2']) {
+      expect(convertedText(source),source).toBe(source.slice(0,-3)+'x²');
+    }
   });
-  it('converts a normal link label while keeping its target out of matches', () => expect(rendered('[x_i \\alpha ->](target_x_i)').map(x => x.source)).toEqual(['x_i','\\alpha','->']));
-  it('keeps all source offsets exact across escapes/entities', () => {
-    const source = '&amp; \\* Test \\alpha x_i ->';
-    for (const match of rendered(source)) expect(source.slice(match.from, match.to)).toBe(match.source);
-    expect(rendered(source).map(x => x.source)).toEqual(['\\alpha','x_i','->']);
+  it('preserves emphasis and link labels around a completion', () => {
+    for (const source of ['*x^2*','[x^2](target)']) {
+      const pos=source.indexOf('x^2')+3;
+      expect(completionAt(source,pos,all)?.text).toBe('²');
+    }
+  });
+  it('applies the same Markdown protection to longer bases', () => {
+    for (const source of ['`filename_i', '$filename_i', '[[filename_i', '[link](filename_i',
+      'https://example.com/filename_i', '---\nkey: filename_i', '%% filename_i',
+      'filename\\_i', '```\nfilename_i', '<span>filename_i']) {
+      expect(complete(source), source).toBeUndefined();
+    }
+    for (const source of ['*filename_i*', '[filename_i](target)']) {
+      const position = source.indexOf('filename_i') + 'filename_i'.length;
+      expect(completionAt(source, position, all)?.text).toBe('ᵢ');
+    }
   });
 });
 
 describe('settings', () => {
-  const source = '[TODO] x_i 10^n \\alpha \\Rightarrow \\geq -> <=';
-  for (const key of Object.keys(all) as (keyof Settings)[]) it(`independent ${key} switch`, () => {
-    const only = {scripts:false,latex:false,arrows:false,operators:false,[key]:true};
-    const expected = {scripts:['x_i','10^n'],latex:['\\alpha','\\Rightarrow','\\geq'],arrows:['->'],operators:['<=']}[key];
-    expect(rendered(source,only).map(x => x.source)).toEqual(expected);
+  for (const [key, input] of [['scripts','x^2'],['latex','\\tau'],['arrows','->'],['operators','>=']] as const) {
+    it(`honors the ${key} switch independently`, () => {
+      const source='Test '+input;
+      expect(completionAt(source,source.length,{...all,[key]:false})).toBeUndefined();
+      expect(completionAt(source,source.length,{scripts:false,latex:false,arrows:false,operators:false,[key]:true})).toBeDefined();
+    });
+  }
+  it('loads existing settings without introducing a migration', () => {
+    expect(loadSettings({latex:false,scripts:'false',arrows:null,status:true})).toEqual({...all,latex:false});
   });
-  it('validates persistent data', () => expect(loadSettings({latex:false, scripts:'false',arrows:null,status:true})).toEqual({...all,latex:false}));
-  it('all disabled yields no matches', () => expect(scan(source,{scripts:false,latex:false,arrows:false,operators:false})).toEqual([]));
-});
-
-describe('additional host boundaries', () => {
-  it('protects Obsidian comments including multiline and unfinished comments',()=>{
-    expect(rendered('%% x_i -> \\alpha %%')).toEqual([]);
-    expect(rendered('%%\nx_i ->\n%%\n\nx_j').map(x=>x.source)).toEqual(['x_j']);
-    expect(rendered('%% x_i ->')).toEqual([]);
-  });
-  it('protects native quote syntax at the start of a line',()=>{
-    expect(rendered('>= 4').map(x=>x.source)).toEqual([]);
-    expect(rendered('x >= 4').map(x=>x.source)).toEqual(['>=']);
-  });
-  it('supports prose in native tables',()=>expect(rendered('| Test | Other |\n| --- | --- |\n| x_i -> | \\alpha <= |').map(x=>x.source)).toEqual(['x_i','->','\\alpha','<=']));
-  it('uses letter-only TeX command names, preserving subsequent digits',()=>expect(rendered('\\alpha1').map(x=>x.source)).toEqual(['\\alpha']));
-  it('protects native autolink email identifiers',()=>expect(rendered('<x_i@example.com> x_i@example.com')).toEqual([]));
-  it('allows explicit email link labels while protecting their destinations',()=>expect(rendered('[x_i](mailto:x_j@example.com)').map(x=>x.source)).toEqual(['x_i']));
 });

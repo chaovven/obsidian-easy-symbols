@@ -1,212 +1,238 @@
 // @vitest-environment jsdom
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { EditorSelection, EditorState, Prec, StateEffect, StateField } from '@codemirror/state';
-import { EditorView } from '@codemirror/view';
-import { editorLivePreviewField } from 'obsidian';
-import { editorExtension, refreshSymbols, selectionTouches } from '../src/editor';
-import { DEFAULT_SETTINGS, type Settings } from '../src/rules';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { EditorSelection, EditorState, type Transaction } from '@codemirror/state';
+import { defaultKeymap, history, historyKeymap, redo, undo } from '@codemirror/commands';
+import { EditorView, keymap } from '@codemirror/view';
+import { editorExtension } from '../src/editor';
+import { COMMANDS, DEFAULT_SETTINGS, type Settings } from '../src/rules';
 
-beforeEach(()=>{
-  // jsdom has no layout; supply only the geometry CM's selection measurement needs.
+const views: EditorView[] = [];
+beforeEach(() => {
   Range.prototype.getClientRects = () => [] as unknown as DOMRectList;
   Range.prototype.getBoundingClientRect = () => new DOMRect();
 });
-function create(doc='Test x_i -> \\alpha\nEnd', live=true) {
-  let settings:Settings={...DEFAULT_SETTINGS}, enabled=true;
-  const views=new Set<EditorView>();
-  const extensions=[editorExtension(()=>settings,()=>enabled,views),EditorState.allowMultipleSelections.of(true)];
-  if(live)extensions.push(editorLivePreviewField as never);
-  const view=new EditorView({state:EditorState.create({doc,extensions}),parent:document.body});
-  return {view,views,settings:(next:Settings)=>{settings=next;view.dispatch({effects:refreshSymbols.of()});},disable:()=>{enabled=false;view.dispatch({effects:refreshSymbols.of()});}};
+afterEach(() => { for (const view of views.splice(0)) view.destroy(); });
+function create(doc = '', cursor = doc.length) {
+  let settings: Settings = {...DEFAULT_SETTINGS}, enabled = true;
+  const view = new EditorView({
+    state: EditorState.create({doc,selection:{anchor:cursor},extensions:[
+      history(), keymap.of([...defaultKeymap,...historyKeymap]), EditorState.allowMultipleSelections.of(true),
+      editorExtension(() => settings, () => enabled),
+    ]}), parent:document.body,
+  });
+  views.push(view);
+  return {view, settings:(value:Settings)=>{settings=value;}, disable:()=>{enabled=false;}};
 }
-describe('CodeMirror decorations never edit source',()=>{
-  it('renders in Live Preview, with no document change or undo transaction',()=>{
-    const {view,views}=create();const source=view.state.doc.toString();
-    const transactions:{docChanged:boolean}[]=[];
-    view.dispatch({effects:StateEffect.appendConfig.of(EditorView.updateListener.of(update=>transactions.push(...update.transactions)))});
-    expect(view.dom.querySelectorAll('.easy-symbols')).toHaveLength(3);
-    view.dispatch({selection:{anchor:7}});
-    expect(view.dom.querySelector('sub')).toBeNull();
-    view.dispatch({selection:{anchor:0}});
-    expect(view.dom.querySelector('sub')?.textContent).toBe('i');
-    expect(view.state.doc.toString()).toBe(source);
-    expect(transactions.every(t=>!t.docChanged)).toBe(true);
-    view.destroy();expect(views.size).toBe(0);
+/** Exercise the same input facet and default insertion transaction used by CodeMirror's DOM observer. */
+function input(view: EditorView, text: string, event = 'input.type') {
+  const {from,to}=view.state.selection.main;
+  let normal: Transaction | undefined;
+  const insert=()=>normal ??= view.state.update({changes:{from,to,insert:text},selection:{anchor:from+text.length},userEvent:event});
+  if (!view.state.facet(EditorView.inputHandler).some(handler=>handler(view,from,to,text,insert))) view.dispatch(insert());
+}
+function key(view: EditorView, name: string, options: KeyboardEventInit = {}) {
+  view.contentDOM.dispatchEvent(new KeyboardEvent('keydown',{key:name,bubbles:true,cancelable:true,...options}));
+}
+const text = (view: EditorView) => view.state.doc.toString();
+
+describe('Space-triggered source conversion', () => {
+  it('handles a typed space read by the real CodeMirror DOM observer', async () => {
+    const {view}=create('x^2');view.focus();
+    const node=view.contentDOM.querySelector('.cm-line')!.firstChild!;
+    node.nodeValue='x^2 ';
+    window.getSelection()!.collapse(node,4);
+    view.contentDOM.dispatchEvent(new InputEvent('input',{data:' ',inputType:'insertText',bubbles:true}));
+    await new Promise(resolve=>setTimeout(resolve,40));
+    expect(text(view)).toBe('x²');
+    expect(view.state.selection.main.head).toBe(2);
+    key(view,'Backspace');expect(text(view)).toBe('x^2');
   });
-  it('renders superscript-first syntax and reveals its full original text when selected',()=>{
-    const source='Test x^2_i End';
-    const {view}=create(source);
-    expect(view.dom.querySelector('sub')?.textContent).toBe('i');
-    expect(view.dom.querySelector('sup')?.textContent).toBe('2');
-    view.dispatch({selection:{anchor:5,head:10}});
-    expect(view.dom.querySelector('.easy-symbols')).toBeNull();
-    expect(view.state.doc.toString()).toBe(source);
-    view.destroy();
+  it('does nothing on load or typing, then consumes exactly one triggering space', () => {
+    const {view}=create('Existing x^3\n\n');
+    for (const char of 'x^2+1') input(view,char);
+    expect(text(view)).toBe('Existing x^3\n\nx^2+1');
+    input(view,' ');
+    expect(text(view)).toBe('Existing x^3\n\nx²⁺¹');
+    expect(view.state.selection.main.head).toBe(text(view).length);
+    expect(view.dom.querySelector('sub,sup,.easy-symbols')).toBeNull();
+    input(view,'y');expect(text(view)).toBe('Existing x^3\n\nx²⁺¹y');
   });
-  it('reveals matches touched by any cursor or selection',()=>{
-    const {view}=create();
-    view.dispatch({selection:EditorSelection.create([EditorSelection.cursor(7),EditorSelection.range(9,11)])});
-    expect(view.dom.querySelector('sub')).toBeNull();
-    expect(view.dom.querySelectorAll('.easy-symbols')).toHaveLength(1);
-    view.destroy();
+  it('inserts a normal second space and preserves following source', () => {
+    const {view}=create('x^2 tail',3);
+    input(view,' ');expect(text(view)).toBe('x² tail');
+    expect(view.state.selection.main.head).toBe(2);
+    input(view,' ');expect(text(view)).toBe('x²  tail');
   });
-  it('renders numeric superscripts and reveals their entire multi-digit base for editing',()=>{
-    const source='Test 10^n 2^32.txt 2^3_4 2026_11_03';
-    const {view,settings}=create(source);
-    const superscripts=()=>Array.from(view.dom.querySelectorAll('sup')).map(node=>node.textContent);
-    expect(superscripts()).toEqual(['n','32.txt','3_4']);
-    expect(view.dom.querySelector('.easy-symbols')?.firstChild?.textContent).toBe('10');
-    expect(view.dom.querySelector('sub')).toBeNull();
-    view.dispatch({selection:{anchor:6}});
-    expect(superscripts()).toEqual(['32.txt','3_4']);
-    view.dispatch({selection:{anchor:0}});
-    expect(superscripts()).toEqual(['n','32.txt','3_4']);
-    settings({...DEFAULT_SETTINGS,scripts:false});expect(superscripts()).toEqual([]);
-    settings(DEFAULT_SETTINGS);expect(superscripts()).toEqual(['n','32.txt','3_4']);
-    expect(view.state.doc.toString()).toBe(source);view.destroy();
+  it.each([['x_12','x₁₂'],['\\div','÷'],['\\tau','τ'],['->','→'],['x^(n+1)','x⁽ⁿ⁺¹⁾']])('converts %s to saved Unicode', (source,expected) => {
+    const {view}=create(source);input(view,' ');expect(text(view)).toBe(expected);
   });
-  it('shows only original source when not in Live Preview',()=>{
-    const {view}=create(undefined,false);expect(view.dom.querySelector('.easy-symbols')).toBeNull();view.destroy();
+  it.each(Object.entries(COMMANDS).filter(([,symbol])=>/^\p{L}$/u.test(symbol)))(
+    'completes \\%s first, then adds a Unicode subscript to %s', (command,symbol) => {
+      const {view}=create();
+      for(const character of '\\'+command) input(view,character);
+      input(view,' ');expect(text(view)).toBe(symbol);
+      input(view,'_');input(view,'i');expect(text(view)).toBe(symbol+'_i');
+      input(view,' ');expect(text(view)).toBe(symbol+'ᵢ');
+      expect(view.state.selection.main.head).toBe(text(view).length);
+    },
+  );
+  it.each([['𝑥_i','𝑥ᵢ'],['e\u0301^2','e\u0301²'],['x\u20D7^2','x\u20D7²'],['τ_β','τᵦ'],
+    ['filename_i','filenameᵢ'],['length^2','length²'],['file name_i','file nameᵢ'],['𝑥name_i','𝑥nameᵢ'],
+    ['1_1','1₁'],['101_2','101₂']])(
+    'preserves the exact base and caret for %s', (source,expected) => {
+      const {view}=create(source);input(view,' ');expect(text(view)).toBe(expected);
+      expect(view.state.selection.main.head).toBe(expected.length);
+      key(view,'Backspace');expect(text(view)).toBe(source);
+      expect(view.state.selection.main.head).toBe(source.length);
+      input(view,' ');expect(text(view)).toBe(source+' ');
+    },
+  );
+  it('consumes the confirmation space after a longer base, then inserts an ordinary space', () => {
+    const {view}=create('filename_i');input(view,' ');
+    expect(text(view)).toBe('filenameᵢ');
+    input(view,' ');expect(text(view)).toBe('filenameᵢ ');
+    key(view,'Backspace');expect(text(view)).toBe('filenameᵢ');
   });
-  it('refresh and unload remove decorations without text edits',()=>{
-    const {view,settings,disable}=create();const source=view.state.doc.toString();
-    settings({...DEFAULT_SETTINGS,scripts:false});expect(view.dom.querySelector('sub')).toBeNull();
-    disable();expect(view.dom.querySelector('.easy-symbols')).toBeNull();
-    expect(view.state.doc.toString()).toBe(source);view.destroy();
+  it('preserves an explicitly typed period after conversion', () => {
+    const {view}=create('filename_i');input(view,' ');input(view,'.');input(view,' ');
+    expect(text(view)).toBe('filenameᵢ. ');
   });
-  it('keeps existing widgets through composition edits without replacing their DOM',async()=>{
-    const {view}=create();
-    const widgets=Array.from(view.dom.querySelectorAll('.easy-symbols'));
-    view.contentDOM.dispatchEvent(new CompositionEvent('compositionstart',{bubbles:true}));
-    expect(Array.from(view.dom.querySelectorAll('.easy-symbols'))).toEqual(widgets);
-    // Insert and replace provisional text before the symbols, moving their positions.
-    view.dispatch({changes:{from:0,insert:'ni'},selection:{anchor:2},userEvent:'input.type.compose'});
-    view.dispatch({changes:{from:0,to:2,insert:'你'},selection:{anchor:1},userEvent:'input.type.compose'});
-    widgets.forEach((widget,index)=>expect(view.dom.querySelectorAll('.easy-symbols')[index]).toBe(widget));
-    view.contentDOM.dispatchEvent(new CompositionEvent('compositionend',{bubbles:true}));
-    await Promise.resolve();
-    expect(view.state.doc.toString()).toBe('你Test x_i -> \\alpha\nEnd');
-    expect(view.dom.querySelectorAll('.easy-symbols')).toHaveLength(3);view.destroy();
+  it.each(['x_q','x_iq','x_{i}','x^2_q','x_i^','x_i^q','x_i^2q','x_i^2,','x^2,','hello'])('retains the space and full unsupported input %s', source => {
+    const {view}=create(source);input(view,' ');expect(text(view)).toBe(source+' ');
   });
-  it.each(['x_i','10^n'])('defers a new %s widget until composition ends, even away from the caret',async(script)=>{
-    const {view}=create('Test ');
-    view.dispatch({selection:{anchor:5}});
-    view.contentDOM.dispatchEvent(new CompositionEvent('compositionstart',{bubbles:true}));
-    const inserted=script+' 你好';
-    view.dispatch({changes:{from:5,insert:inserted},selection:{anchor:5+inserted.length},userEvent:'input.type.compose'});
-    expect(view.dom.querySelector('.easy-symbols')).toBeNull();
-    view.contentDOM.dispatchEvent(new CompositionEvent('compositionend',{bubbles:true}));
-    await Promise.resolve();
-    expect(view.dom.querySelector('sub, sup')?.textContent).toBe(script==='x_i'?'i':'n');
-    expect(view.state.doc.toString()).toBe('Test '+inserted);view.destroy();
-  });
-  it('recovers when another extension handles compositionend before ordinary handlers',async()=>{
-    const {view}=create('Test ');
-    const handled=vi.fn(()=>true);
-    view.dispatch({effects:StateEffect.appendConfig.of(Prec.high(EditorView.domEventHandlers({compositionend:handled})))});
-    view.dispatch({selection:{anchor:5}});
-    view.contentDOM.dispatchEvent(new CompositionEvent('compositionstart',{bubbles:true}));
-    view.dispatch({changes:{from:5,insert:'x_i '},selection:{anchor:9},userEvent:'input.type.compose'});
-    view.contentDOM.dispatchEvent(new CompositionEvent('compositionend',{bubbles:true,cancelable:true}));
-    await Promise.resolve();
-    expect(handled).toHaveBeenCalledOnce();
-    expect(view.compositionStarted).toBe(false);
-    expect(view.dom.querySelector('sub')?.textContent).toBe('i');
-    // Normal/visual-style cursor and range changes must keep revealing and restoring source.
-    view.dispatch({selection:{anchor:8,head:5}});
-    expect(view.dom.querySelector('sub')).toBeNull();
-    view.dispatch({selection:{anchor:0}});
-    expect(view.dom.querySelector('sub')?.textContent).toBe('i');view.destroy();
-  });
-  it('does not restore widgets into a new composition before its end',async()=>{
-    const {view}=create('Test ');
-    view.dispatch({selection:{anchor:5}});
-    view.contentDOM.dispatchEvent(new CompositionEvent('compositionstart',{bubbles:true}));
-    view.dispatch({changes:{from:5,insert:'x_i '},selection:{anchor:9},userEvent:'input.type.compose'});
-    view.contentDOM.dispatchEvent(new CompositionEvent('compositionend',{bubbles:true}));
-    view.contentDOM.dispatchEvent(new CompositionEvent('compositionstart',{bubbles:true}));
-    await Promise.resolve();
-    expect(view.dom.querySelector('.easy-symbols')).toBeNull();
-    view.contentDOM.dispatchEvent(new CompositionEvent('compositionend',{bubbles:true}));
-    await Promise.resolve();
-    expect(view.dom.querySelector('sub')?.textContent).toBe('i');view.destroy();
-  });
-  it('does not refresh a destroyed editor after compositionend',async()=>{
-    const {view,views}=create();
-    view.contentDOM.dispatchEvent(new CompositionEvent('compositionstart',{bubbles:true}));
-    view.contentDOM.dispatchEvent(new CompositionEvent('compositionend',{bubbles:true}));
-    const dispatch=vi.spyOn(view,'dispatch');
-    view.destroy();
-    await Promise.resolve();
-    expect(dispatch).not.toHaveBeenCalled();expect(views.size).toBe(0);
-  });
-  it('preserves remote symbols while CodeMirror reads provisional text from the DOM',async()=>{
-    const {view}=create();
-    const errors=vi.fn();
-    view.dispatch({effects:StateEffect.appendConfig.of(EditorView.exceptionSink.of(errors))});
-    view.focus();
-    view.dispatch({selection:{anchor:view.state.doc.length}});
-    const widgets=Array.from(view.dom.querySelectorAll('.easy-symbols'));
-    view.contentDOM.dispatchEvent(new CompositionEvent('compositionstart',{bubbles:true}));
-    for (const text of ['Endni','Endnihao','End你好']) {
-      const node=view.contentDOM.querySelector('.cm-line:last-child')!.firstChild!;
-      expect(node.nodeType).toBe(Node.TEXT_NODE);
-      node.nodeValue=text;
-      window.getSelection()!.collapse(node,text.length);
-      view.contentDOM.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertCompositionText',isComposing:true}));
-      // Allow the real CodeMirror DOM observer to read this composition edit.
-      await new Promise(resolve=>setTimeout(resolve,30));
-      expect(view.composing).toBe(true);
-      expect(view.state.doc.toString()).toBe('Test x_i -> \\alpha\n'+text);
-      widgets.forEach((widget,index)=>expect(view.dom.querySelectorAll('.easy-symbols')[index]).toBe(widget));
+  it('does not interpret paste, drop, Enter, Tab or programmatic edits as conversion', () => {
+    for (const event of ['input.paste','input.drop','input.type.compose','input']) {
+      const {view}=create('x^2');input(view,' ',event);expect(text(view)).toBe('x^2 ');
     }
+    for (const value of ['\n','\t','x^2 ',' ']) {
+      const {view}=create('x^2');
+      if (value===' ') view.dispatch({changes:{from:3,insert:' '}});
+      else input(view,value);
+      expect(text(view)).toBe('x^2'+value);
+    }
+  });
+  it('does not convert while replacing a selection or with multiple cursors', () => {
+    const {view}=create('x^2 end');
+    view.dispatch({selection:{anchor:3,head:7}});input(view,' ');expect(text(view)).toBe('x^2 ');
+    const other=create('x^2 x^3').view;
+    other.dispatch({selection:EditorSelection.create([EditorSelection.cursor(3),EditorSelection.cursor(7)])});
+    input(other,' ');expect(text(other)).toContain('x^2');expect(text(other)).toContain('x^3');
+  });
+  it('honors disabled settings and unloading without changing existing Unicode', () => {
+    const {view,settings,disable}=create('x^2');settings({...DEFAULT_SETTINGS,scripts:false});
+    input(view,' ');expect(text(view)).toBe('x^2 ');
+    settings(DEFAULT_SETTINGS);input(view,'x_i');input(view,' ');expect(text(view)).toBe('x^2 xᵢ');
+    input(view,' ');input(view,'\\tau');disable();input(view,' ');expect(text(view)).toBe('x^2 xᵢ \\tau ');
+  });
+});
+
+describe('accept, reject and history', () => {
+  it.each([['x_i^j','x_iʲ'],['x^2_i','x^2ᵢ'],['x_i+1^2','x_i+1²'],['filename_i^2','filename_i²'],
+    ['10_i^2','10_i²'],['2026_11_03','2026_11₀₃'],['x_i_j','x_iⱼ'],['x_q^2','x_q²'],
+    ['x^2+y^2','x^2+y²'],['∞_i','∞ᵢ'],['||^2','||²'],['_i','ᵢ']])(
+    'converts only the nearest script in %s as one undoable edit', (source,expected) => {
+      const {view}=create();for(const character of source) input(view,character);
+      expect(text(view)).toBe(source);input(view,' ');expect(text(view)).toBe(expected);
+      expect(view.state.selection.main.head).toBe(expected.length);
+      undo(view);expect(text(view)).toBe(source);
+      redo(view);expect(text(view)).toBe(expected);
+      key(view,'Backspace');expect(text(view)).toBe(source);
+      input(view,' ');expect(text(view)).toBe(source+' ');
+    },
+  );
+  it.each([['x_i','^j','xᵢ','xᵢʲ'],['x^2','_i','x²','x²ᵢ'],['τ_i','^2','τᵢ','τᵢ²'],
+    ['filename_i','^2','filenameᵢ','filenameᵢ²'],['length^2','_i','length²','length²ᵢ'],
+    ['10_1','^2','10₁','10₁²'],['10^2','_i','10²','10²ᵢ'],
+    ['x_i','_j','xᵢ','xᵢⱼ'],['x^2','^3','x²','x²³']])(
+    'adds a script after completing %s', (first,second,intermediate,expected) => {
+      const {view}=create(first);input(view,' ');expect(text(view)).toBe(intermediate);
+      input(view,second);expect(text(view)).toBe(intermediate+second);
+      input(view,' ');expect(text(view)).toBe(expected);
+      expect(view.state.selection.main.head).toBe(expected.length);
+      undo(view);expect(text(view)).toBe(intermediate+second);
+      input(view,' ');expect(text(view)).toBe(intermediate+second+' ');
+    },
+  );
+  it('inserts a real second space without converting earlier shorthand', () => {
+    const {view}=create('2026_11_03');input(view,' ');
+    expect(text(view)).toBe('2026_11₀₃');
+    input(view,' ');expect(text(view)).toBe('2026_11₀₃ ');
+    key(view,'Backspace');expect(text(view)).toBe('2026_11₀₃');
+  });
+  it('converts at the cursor without touching text on either side', () => {
+    const {view}=create('𝑥_i^2 tail',6);input(view,' ');
+    expect(text(view)).toBe('𝑥_i² tail');
+    expect(view.state.selection.main.head).toBe(5);
+    key(view,'Backspace');expect(text(view)).toBe('𝑥_i^2 tail');
+    expect(view.state.selection.main.head).toBe(6);
+  });
+  it('adds a script to pasted Unicode only after a new typed Space', () => {
+    const {view}=create();input(view,'𝑥ᵢ','input.paste');input(view,'^j');
+    expect(text(view)).toBe('𝑥ᵢ^j');input(view,' ');expect(text(view)).toBe('𝑥ᵢʲ');
+    key(view,'Backspace');expect(text(view)).toBe('𝑥ᵢ^j');
+    expect(view.state.selection.main.head).toBe(5);
+  });
+  it('undoes only the script in a two-step Greek-letter completion', () => {
+    const {view}=create('\\tau');input(view,' ');input(view,'_i');input(view,' ');
+    expect(text(view)).toBe('τᵢ');
+    undo(view);expect(text(view)).toBe('τ_i');
+    redo(view);expect(text(view)).toBe('τᵢ');
+    key(view,'Backspace');expect(text(view)).toBe('τ_i');
+    input(view,' ');expect(text(view)).toBe('τ_i ');
+  });
+  it('isolates conversion from preceding typing and restores shorthand with Undo', () => {
+    const {view}=create();for(const char of 'x^2') input(view,char);input(view,' ');
+    expect(text(view)).toBe('x²');expect(undo(view)).toBe(true);expect(text(view)).toBe('x^2');
+    expect(view.state.selection.main.head).toBe(3);
+    input(view,' ');expect(text(view)).toBe('x^2 ');
+    input(view,'x^2');input(view,' ');expect(text(view)).toBe('x^2 x²');
+  });
+  it('Backspace rejects immediately instead of deleting the last Unicode character', () => {
+    const {view}=create('x^2+1');input(view,' ');key(view,'Backspace');
+    expect(text(view)).toBe('x^2+1');input(view,' ');expect(text(view)).toBe('x^2+1 ');
+  });
+  it('mobile backward deletion also rejects the last conversion', () => {
+    const {view}=create('\\div');input(view,' ');
+    view.contentDOM.dispatchEvent(new InputEvent('beforeinput',{inputType:'deleteContentBackward',bubbles:true,cancelable:true}));
+    expect(text(view)).toBe('\\div');input(view,' ');expect(text(view)).toBe('\\div ');
+  });
+  it('editing rejected shorthand makes it eligible again', () => {
+    const {view}=create('x^2');input(view,' ');undo(view);input(view,'+1');input(view,' ');
+    expect(text(view)).toBe('x²⁺¹');
+  });
+  it('keeps rejection when moving away and back without editing the shorthand', () => {
+    const {view}=create('x^2');input(view,' ');undo(view);
+    view.dispatch({selection:{anchor:0}});view.dispatch({selection:{anchor:3}});
+    input(view,' ');expect(text(view)).toBe('x^2 ');
+  });
+  it('Backspace returns to ordinary deletion after typing or moving the cursor', () => {
+    const {view}=create('x^2');input(view,' ');input(view,'y');key(view,'Backspace');expect(text(view)).toBe('x²');
+    key(view,'Backspace');expect(text(view)).toBe('x');
+    const other=create('x^2').view;input(other,' ');
+    other.dispatch({selection:{anchor:0}});other.dispatch({selection:{anchor:2}});
+    key(other,'Backspace');expect(text(other)).toBe('x');
+  });
+  it('redo re-applies the conversion and permits immediate rejection', () => {
+    const {view}=create('x_12');input(view,' ');undo(view);expect(text(view)).toBe('x_12');
+    redo(view);expect(text(view)).toBe('x₁₂');key(view,'Backspace');expect(text(view)).toBe('x_12');
+    input(view,' ');expect(text(view)).toBe('x_12 ');
+  });
+  it('undoing later typing leaves the conversion as its own history step', () => {
+    const {view}=create('x^2');input(view,' ');input(view,'y');undo(view);expect(text(view)).toBe('x²');
+    undo(view);expect(text(view)).toBe('x^2');input(view,' ');expect(text(view)).toBe('x^2 ');
+  });
+});
+
+describe('protected contexts and IME', () => {
+  it.each(['`x^2','```\nx^2','$x^2','---\na: x^2','[link](x^2','[[x^2','%% x^2',
+    '`2026_11_03','$2026_11_03','[[2026_11_03','[link](2026_11_03','x_i\\^2'])('leaves %s untouched', source => {
+    const {view}=create(source);input(view,' ');expect(text(view)).toBe(source+' ');
+  });
+  it('never converts a space while composition has started', async () => {
+    const {view}=create('x^2');view.contentDOM.dispatchEvent(new CompositionEvent('compositionstart',{bubbles:true}));
+    input(view,' ');expect(text(view)).toBe('x^2 ');
     view.contentDOM.dispatchEvent(new CompositionEvent('compositionend',{bubbles:true}));
-    await new Promise(resolve=>setTimeout(resolve,60));
-    expect(view.compositionStarted).toBe(false);
-    expect(view.dom.querySelectorAll('.easy-symbols')).toHaveLength(3);
-    expect(errors).not.toHaveBeenCalled();view.destroy();
-  });
-  it('restores a locally revealed symbol after cancelling composition and moving away',async()=>{
-    const {view}=create();const source=view.state.doc.toString();
-    view.dispatch({selection:{anchor:7}});
-    view.contentDOM.dispatchEvent(new CompositionEvent('compositionstart',{bubbles:true}));
-    expect(view.dom.querySelector('sub')).toBeNull();
-    expect(view.dom.querySelectorAll('.easy-symbols')).toHaveLength(2);
-    view.contentDOM.dispatchEvent(new CompositionEvent('compositionend',{bubbles:true,data:''}));
-    await Promise.resolve();
-    view.dispatch({selection:{anchor:0}});
-    expect(view.dom.querySelectorAll('.easy-symbols')).toHaveLength(3);
-    expect(view.state.doc.toString()).toBe(source);view.destroy();
-  });
-  it('drops edited widgets before they can cover a new line during composition',async()=>{
-    const {view}=create();
-    const errors=vi.fn();
-    view.dispatch({effects:StateEffect.appendConfig.of(EditorView.exceptionSink.of(errors))});
-    view.contentDOM.dispatchEvent(new CompositionEvent('compositionstart',{bubbles:true}));
-    view.dispatch({changes:{from:7,insert:'\n'},selection:{anchor:8},userEvent:'input.type.compose'});
-    expect(view.dom.querySelector('sub')).toBeNull();
-    expect(view.dom.querySelectorAll('.easy-symbols')).toHaveLength(2);
-    view.contentDOM.dispatchEvent(new CompositionEvent('compositionend',{bubbles:true}));
-    await Promise.resolve();
-    expect(view.state.doc.toString()).toBe('Test x_\ni -> \\alpha\nEnd');
-    expect(errors).not.toHaveBeenCalled();view.destroy();
-  });
-  it('honors setting changes and disable while composition is active',async()=>{
-    const {view,settings,disable}=create();const source=view.state.doc.toString();
-    view.contentDOM.dispatchEvent(new CompositionEvent('compositionstart',{bubbles:true}));
-    settings({...DEFAULT_SETTINGS,scripts:false});
-    expect(view.dom.querySelector('sub')).toBeNull();
-    expect(view.dom.querySelectorAll('.easy-symbols')).toHaveLength(2);
-    disable();
-    expect(view.dom.querySelector('.easy-symbols')).toBeNull();
-    view.contentDOM.dispatchEvent(new CompositionEvent('compositionend',{bubbles:true}));
-    await Promise.resolve();
-    expect(view.dom.querySelector('.easy-symbols')).toBeNull();
-    expect(view.state.doc.toString()).toBe(source);view.destroy();
-  });
-  it('includes edges and reversed selections',()=>{
-    const match={from:5,to:8,source:'x_i',kind:'script' as const,text:'x',sub:'i'};
-    expect(selectionTouches(match,[{from:8,to:8}])).toBe(true);
-    expect(selectionTouches(match,[{from:0,to:4}])).toBe(false);
+    await Promise.resolve();expect(text(view)).toBe('x^2 ');
+    input(view,'x_i');input(view,' ');expect(text(view)).toBe('x^2 xᵢ');
   });
 });

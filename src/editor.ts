@@ -1,88 +1,93 @@
-import { StateEffect, type SelectionRange } from '@codemirror/state';
-import { Decoration, EditorView, ViewPlugin, WidgetType, type DecorationSet, type ViewUpdate } from '@codemirror/view';
-import { editorLivePreviewField } from 'obsidian';
-import { createSymbolDOM } from './dom';
-import { analyze, matchesFor, type Analysis } from './syntax';
-import type { Match, Settings } from './rules';
+import { Prec, StateEffect, StateField, Transaction, type Extension } from '@codemirror/state';
+import { invertedEffects, isolateHistory, undo } from '@codemirror/commands';
+import { EditorView, keymap } from '@codemirror/view';
+import { completionAt } from './syntax';
+import type { Settings } from './rules';
 
-export const refreshSymbols = StateEffect.define<void>();
-export function selectionTouches(match: Match, ranges: readonly Pick<SelectionRange, 'from' | 'to'>[]): boolean {
-  // Include both edges: clicking or arrowing onto a widget reveals its source immediately.
-  return ranges.some(range => range.from <= match.to && range.to >= match.from);
-}
-class SymbolWidget extends WidgetType {
-  constructor(readonly match: Match) { super(); }
-  eq(other: SymbolWidget): boolean { return this.match.source === other.match.source && this.match.kind === other.match.kind; }
-  toDOM(view: EditorView): HTMLElement { return createSymbolDOM(view.dom.ownerDocument, this.match); }
-  ignoreEvent(): boolean { return false; }
-}
-export function editorExtension(getSettings: () => Settings, isEnabled: () => boolean, views: Set<EditorView>) {
-  return ViewPlugin.fromClass(class {
-    decorations: DecorationSet = Decoration.none;
-    private analysis: Analysis;
-    private matches: Match[];
-    private needsBuild = false;
-    private destroyed = false;
-    constructor(readonly view: EditorView) {
-      views.add(view);
-      this.analysis = analyze(view.state.doc.toString());
-      this.matches = matchesFor(this.analysis, getSettings());
-      if (view.compositionStarted) this.needsBuild = true;
-      else this.build();
+type Completion = { from: number; source: string; text: string };
+const converted = StateEffect.define<Completion>({
+  map: (value, changes) => ({ ...value, from: changes.mapPos(value.from, 1) }),
+});
+const rejected = StateEffect.define<Completion>({
+  map: (value, changes) => ({ ...value, from: changes.mapPos(value.from, 1) }),
+});
+const clearCompletion = StateEffect.define<void>();
+const completionState = StateField.define<{ recent?: Completion; rejected?: Completion }>({
+  create: () => ({}),
+  update(value, transaction) {
+    if (transaction.docChanged) value = {};
+    else if (transaction.selection && !transaction.selection.eq(transaction.startState.selection)) {
+      value = { rejected: value.rejected };
     }
-    update(update: ViewUpdate): void {
-      const refresh = update.transactions.some(transaction => transaction.effects.some(effect => effect.is(refreshSymbols)));
-      // Parse only on document changes; cursor moves and scrolling reuse this cache.
-      if (update.docChanged) this.analysis = analyze(update.state.doc.toString());
-      if (update.docChanged || refresh) this.matches = matchesFor(this.analysis, getSettings());
-      this.needsBuild ||= this.view.compositionStarted || update.docChanged || refresh || update.selectionSet || update.viewportChanged || update.startState.field(editorLivePreviewField, false) !== update.state.field(editorLivePreviewField, false);
-      if (!this.needsBuild) return;
-      if (this.view.compositionStarted) {
-        // Keep existing widgets stable while the IME owns the composing DOM.
-        // Map their positions, remove invalid/selected matches, but add no widgets.
-        if (!isEnabled() || !this.view.state.field(editorLivePreviewField, false)) {
-          this.decorations = Decoration.none;
-        } else {
-          const matches = new Map(this.matches.map(match => [match.from, match]));
-          this.decorations = this.decorations.map(update.changes).update({ filter: (from, to, decoration) => {
-            const match = matches.get(from);
-            const widget = decoration.spec.widget as SymbolWidget;
-            return match?.to === to && match.source === widget.match.source && match.kind === widget.match.kind
-              && !selectionTouches(match, update.state.selection.ranges);
-          } });
+    for (const effect of transaction.effects) {
+      if (effect.is(converted)) value = { recent: effect.value };
+      if (effect.is(rejected)) value = { rejected: effect.value };
+      if (effect.is(clearCompletion)) value = {};
+    }
+    return value;
+  },
+});
+
+/** Space completion is an ordinary, isolated source edit; nothing runs on note load. */
+export function editorExtension(getSettings: () => Settings, isEnabled: () => boolean): Extension {
+  const rejectRecent = (view: EditorView): boolean => {
+    if (!isEnabled() || view.compositionStarted || view.composing) return false;
+    const recent = view.state.field(completionState).recent;
+    const { ranges, main } = view.state.selection;
+    if (!recent || ranges.length !== 1 || !main.empty || main.head !== recent.from + recent.text.length
+      || view.state.sliceDoc(recent.from, main.head) !== recent.text) return false;
+    // Reuse real history: Undo and Backspace restore exactly the same source and caret.
+    return undo(view);
+  };
+  return [
+    completionState,
+    invertedEffects.of(transaction => transaction.effects.flatMap(effect => {
+      if (effect.is(converted)) return [rejected.of(effect.value)];
+      if (effect.is(rejected)) return [converted.of(effect.value)];
+      return [];
+    })),
+    Prec.highest(keymap.of([{ key: 'Backspace', run: rejectRecent }])),
+    EditorView.domEventHandlers({
+      beforeinput(event, view) {
+        if (event.inputType === 'deleteContentBackward' && !event.isComposing && rejectRecent(view)) {
+          event.preventDefault(); return true;
         }
-      } else {
-        this.build();
-        this.needsBuild = false;
-      }
-    }
-    private build(): void {
-      if (!isEnabled() || !this.view.state.field(editorLivePreviewField, false)) {
-        this.decorations = Decoration.none; return;
-      }
-      const decorations = [];
-      for (const visible of this.view.visibleRanges) {
-        // Lower-bound search keeps cursor/viewport work independent of total match count.
-        let low = 0, high = this.matches.length;
-        while (low < high) { const mid = (low + high) >>> 1; if (this.matches[mid].to <= visible.from) low = mid + 1; else high = mid; }
-        for (let i = low; i < this.matches.length && this.matches[i].from < visible.to; i++) {
-          const match = this.matches[i];
-          if (match.from < visible.from || match.to > visible.to || selectionTouches(match, this.view.state.selection.ranges)) continue;
-          decorations.push(Decoration.replace({ widget: new SymbolWidget(match), inclusive: false }).range(match.from, match.to));
+        return false;
+      },
+    }),
+    EditorView.domEventObservers({
+      compositionstart(_event, view) {
+        if (view.state.field(completionState).recent || view.state.field(completionState).rejected) {
+          view.dispatch({ effects: clearCompletion.of() });
         }
-      }
-      this.decorations = Decoration.set(decorations, true);
-    }
-    compositionEnded(): void {
-      // Wait for CodeMirror to finish handling the event and clear its IME state.
-      queueMicrotask(() => { if (!this.destroyed) this.view.dispatch({ effects: refreshSymbols.of() }); });
-    }
-    destroy(): void { this.destroyed = true; this.decorations = Decoration.none; views.delete(this.view); }
-  }, {
-    decorations: plugin => plugin.decorations,
-    eventObservers: {
-      // Observers still run when another extension consumes the end event.
-      compositionend() { this.compositionEnded(); },
-    },
-  });
+      },
+      blur(_event, view) {
+        if (view.state.field(completionState).recent || view.state.field(completionState).rejected) {
+          view.dispatch({ effects: clearCompletion.of() });
+        }
+      },
+    }),
+    EditorView.inputHandler.of((view, from, to, text, insert) => {
+      if (!isEnabled() || text !== ' ' || from !== to || view.compositionStarted || view.composing
+        || view.state.selection.ranges.length !== 1 || !view.state.selection.main.empty
+        || view.state.selection.main.head !== from) return false;
+      // Pasted/dropped/programmatic text and IME commits must never trigger completion.
+      const normal = insert();
+      if (normal.annotation(Transaction.userEvent) !== 'input.type') return false;
+      const previous = view.state.field(completionState).rejected;
+      if (previous && from === previous.from + previous.source.length
+        && view.state.sliceDoc(previous.from, from) === previous.source) return false;
+      const candidate = completionAt(view.state.doc.toString(), from, getSettings());
+      if (!candidate) return false;
+      view.dispatch({
+        changes: { from: candidate.from, to: candidate.to, insert: candidate.text },
+        selection: { anchor: candidate.from + candidate.text.length },
+        effects: converted.of(candidate),
+        annotations: isolateHistory.of('full'),
+        userEvent: 'input.complete',
+        scrollIntoView: true,
+      });
+      return true;
+    }),
+  ];
 }

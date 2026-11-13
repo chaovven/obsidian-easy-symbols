@@ -31,7 +31,7 @@ async function dependencyNotices(inputs) {
 const options = {
   entryPoints: ['src/main.ts'], bundle: true, platform: 'browser', target: 'es2020',
   format: 'cjs', outfile: 'main.js', sourcemap: false,
-  external: ['obsidian', '@codemirror/state', '@codemirror/view', '@codemirror/language', '@lezer/common', '@lezer/highlight'],
+  external: ['obsidian', '@codemirror/state', '@codemirror/view', '@codemirror/commands', '@codemirror/language', '@lezer/common', '@lezer/highlight'],
   minify: !process.argv.includes('--watch'),
   metafile: true,
   plugins: [{

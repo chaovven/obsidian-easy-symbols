@@ -1,14 +1,5 @@
-import { StateField } from '@codemirror/state';
 import { installDomHelpers } from './dom-helpers';
 if (typeof document !== 'undefined') installDomHelpers(document);
-export const editorLivePreviewField=StateField.define({create:()=>true,update:(value:boolean)=>value});
-export class MarkdownRenderChild {
-  disposers:(()=>void)[]=[];
-  constructor(readonly containerEl:HTMLElement){}
-  register(callback:()=>void){this.disposers.push(callback);}
-  unload(){for(const callback of this.disposers.splice(0))callback();}
-}
-export class MarkdownView {previewMode={rerender:(_full?:boolean)=>{}};}
 export class Plugin {
   app={workspace:{onLayoutReady:(callback:()=>void)=>callback(),iterateAllLeaves:(_callback:unknown)=>{}}};
   storedData:unknown=null;

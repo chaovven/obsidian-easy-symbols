@@ -2,9 +2,17 @@
 
 Easy Symbols is an Obsidian plugin that makes it easy to write symbols.
 
-## Arrows
+## How it works
 
-| What you type | What you see |
+Type a supported shortcut and press **Space** to convert it into its matching **Unicode symbol or text**, saved directly in your note. Press **Undo** or **Backspace** immediately after conversion to restore the original text.
+
+For example, type `x^2` and press **Space** to get `x²`. Press **Undo** or **Backspace** immediately afterward to change it back to `x^2`.
+
+## Supported Shortcuts
+
+### Arrows
+
+| What you type | What you get |
 | --- | --- |
 | `->` | → |
 | `<-` | ← |
@@ -14,34 +22,23 @@ Easy Symbols is an Obsidian plugin that makes it easy to write symbols.
 | `<-->` | ⟷ |
 | `=>` | ⇒ |
 | `<=>` | ⇔ |
-| `^\|` or `\|^` | ↑ |
-| `v\|` or `\|v` | ↓ |
 
-## Subscripts & superscripts
+### Subscripts & superscripts
 
-- Support **one letter** before `^` (superscript) or `_` (subscript). 
-- Support **one or more digits** before `^` (superscript).
+Only the text after the last `_` or `^` converts. For example, `x_i^2` becomes `x_i²`.
 
-
-| What you type | What you see |
+| What you type | What you get |
 | --- | --- |
-| `x_i` | x<sub>i</sub> |
-| `x^-1` | x<sup>-1</sup> |
-| `x_i+1` | x<sub>i+1</sub> |
-| `x_i + 1` | x<sub>i</sub> + 1 |
-| `x_i^2` | x<sub>i</sub><sup>2</sup> |
-| `2^32` | 2<sup>32</sup> |
-| `10^n` | 10<sup>n</sup> |
+| `^i` | ⁱ |
+| `_i` | ᵢ |
+| `x^i` | xⁱ |
+| `x_i` | xᵢ |
+| `x_i+1` | xᵢ₊₁ |
+| `2^32` | 2³² |
 
-Note: 
-- A **space** ends the subscript or superscript mode.
-- `{ }` is optional: `x_{i+1}` is the same as `x_i+1`. Use it to include spaces, e.g. `x_{i + 1}`.
-- Multi-letter bases are unsupported: `AA_i` stays as plain text.
-- Digits do not support subscripts: `101_2` and `2026_11_03` stay as plain text.
+### Math operators
 
-## Math operators
-
-| What you type | What you see |
+| What you type | What you get |
 | --- | --- |
 | `>=` | ≥ |
 | `<=` | ≤ |
@@ -50,75 +47,111 @@ Note:
 | `+-` | ± |
 | `-+` | ∓ |
 
-Note:
-- `<=` means ≤. For ⇐, use `\Leftarrow`.
+For ⇐, use `\Leftarrow`.
 
-## Symbols from commands
+### Symbols from commands
 
-
-| What you type | What you see |
+| What you type | What you get |
 | --- | --- |
 | `\alpha` | α |
 | `\beta` | β |
 | `\gamma` | γ |
 | `\delta` | δ |
+| `\epsilon`, `\varepsilon` | ε |
+| `\zeta` | ζ |
+| `\eta` | η |
 | `\theta` | θ |
+| `\iota` | ι |
+| `\kappa` | κ |
 | `\lambda` | λ |
 | `\mu` | μ |
+| `\nu` | ν |
+| `\xi` | ξ |
+| `\omicron` | ο |
+| `\pi` | π |
+| `\rho` | ρ |
 | `\sigma` | σ |
+| `\tau` | τ |
+| `\upsilon` | υ |
+| `\phi`, `\varphi` | φ |
+| `\chi` | χ |
+| `\psi` | ψ |
 | `\omega` | ω |
+| `\Gamma` | Γ |
 | `\Delta` | Δ |
+| `\Theta` | Θ |
+| `\Lambda` | Λ |
+| `\Xi` | Ξ |
+| `\Pi` | Π |
+| `\Sigma` | Σ |
+| `\Upsilon` | Υ |
+| `\Phi` | Φ |
+| `\Psi` | Ψ |
+| `\Omega` | Ω |
+| `\vartheta` | ϑ |
+| `\varkappa` | ϰ |
+| `\varpi` | ϖ |
+| `\varrho` | ϱ |
+| `\varsigma` | ς |
 | `\infty` | ∞ |
-| `\emptyset` | ∅ |
+| `\emptyset`, `\varnothing` | ∅ |
 | `\sum` | ∑ |
+| `\prod` | ∏ |
+| `\int` | ∫ |
+| `\sqrt` | √ |
 | `\partial` | ∂ |
 | `\nabla` | ∇ |
 | `\forall` | ∀ |
 | `\exists` | ∃ |
 | `\in` | ∈ |
+| `\ni` | ∋ |
+| `\notin` | ∉ |
 | `\subset` | ⊂ |
+| `\supset` | ⊃ |
+| `\subseteq` | ⊆ |
+| `\supseteq` | ⊇ |
+| `\cup` | ∪ |
+| `\cap` | ∩ |
 | `\land`, `\wedge` | ∧ |
 | `\lor`, `\vee` | ∨ |
-| `\rightarrow` | → |
+| `\neg` | ¬ |
+| `\rightarrow`, `\to` | → |
 | `\leftarrow` | ← |
-| `\uparrow` | ↑ |
-| `\downarrow` | ↓ |
 | `\leftrightarrow` | ↔ |
+| `\mapsto` | ↦ |
 | `\longrightarrow` | ⟶ |
 | `\longleftarrow` | ⟵ |
 | `\longleftrightarrow` | ⟷ |
 | `\Rightarrow` | ⇒ |
 | `\Leftarrow` | ⇐ |
 | `\Leftrightarrow` | ⇔ |
-| `\geq` | ≥ |
-| `\leq` | ≤ |
-| `\neq` | ≠ |
+| `\geq`, `\ge` | ≥ |
+| `\leq`, `\le` | ≤ |
+| `\neq`, `\ne` | ≠ |
+| `\ll` | ≪ |
+| `\gg` | ≫ |
 | `\approx` | ≈ |
+| `\propto` | ∝ |
+| `\equiv` | ≡ |
+| `\sim` | ∼ |
+| `\simeq` | ≃ |
+| `\cong` | ≅ |
+| `\perp` | ⊥ |
+| `\parallel` | ∥ |
 | `\pm` | ± |
 | `\mp` | ∓ |
-
-## Install
-
-1. Create `plugins/easy-symbols/` inside your vault’s configuration folder (`.obsidian` by default).
-2. Copy `main.js`, `manifest.json`, and `styles.css` into it, then reload Obsidian.
-3. Enable **Easy Symbols** in **Settings → Community plugins**.
-
-Choose which conversions to enable in **Settings → Easy Symbols**. All four are on by default.
+| `\times` | × |
+| `\cdot` | ⋅ |
+| `\div` | ÷ |
+| `\oplus` | ⊕ |
+| `\otimes` | ⊗ |
+| `\ldots` | … |
+| `\cdots` | ⋯ |
+| `\vdots` | ⋮ |
+| `\ddots` | ⋱ |
 
 ## Notes
 
-- Code, existing math formulas, note properties, and link destinations stay unchanged.
-- Nested braces are unsupported; use Obsidian’s built-in math for full equations.
-- Live Preview’s table editor and some embedded views may show the original text.
-- Mobile support, minimum-version compatibility, and performance on large notes still need testing.
-
-## Build from source
-
-Requires Node.js **22.12+ or 24+** and npm.
-
-```sh
-npm ci
-npm run check
-```
-
-`npm run dev` watches for changes. `npm run build` generates `main.js`.
+- This plugin only converts symbols in **regular note text**, i.e., it doesn't convert symbols in code, math formulas, note properties, HTML, comments, embeds, or link URLs.
+- This plugin only converts characters with a **matching Unicode form**. For example, `x_i` becomes xᵢ, but it doesn't convert `x_q` or `x_AB` because Unicode has no subscript `q`, `A`, or `B`.
+- Use `x_i` instead of `x_{i}`. Braces `{}` are not supported.

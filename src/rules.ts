@@ -13,95 +13,67 @@ export function loadSettings(value: unknown): Settings {
   return settings;
 }
 export const COMMANDS: Readonly<Record<string, string>> = {
-  alpha: 'α', beta: 'β', gamma: 'γ', delta: 'δ', theta: 'θ', lambda: 'λ', mu: 'μ', sigma: 'σ', omega: 'ω', Delta: 'Δ',
-  infty: '∞', emptyset: '∅', sum: '∑', partial: '∂', nabla: '∇', forall: '∀', exists: '∃', in: '∈', subset: '⊂',
-  land: '∧', wedge: '∧', lor: '∨', vee: '∨',
-  rightarrow: '→', leftarrow: '←', uparrow: '↑', downarrow: '↓', leftrightarrow: '↔', longrightarrow: '⟶', longleftarrow: '⟵', longleftrightarrow: '⟷',
-  Rightarrow: '⇒', Leftarrow: '⇐', Leftrightarrow: '⇔', geq: '≥', leq: '≤', neq: '≠', approx: '≈', pm: '±', mp: '∓',
+  alpha: 'α', beta: 'β', gamma: 'γ', delta: 'δ', epsilon: 'ε', zeta: 'ζ', eta: 'η', theta: 'θ', iota: 'ι', kappa: 'κ', lambda: 'λ', mu: 'μ', nu: 'ν', xi: 'ξ', omicron: 'ο', pi: 'π', rho: 'ρ', sigma: 'σ', tau: 'τ', upsilon: 'υ', phi: 'φ', chi: 'χ', psi: 'ψ', omega: 'ω',
+  Gamma: 'Γ', Delta: 'Δ', Theta: 'Θ', Lambda: 'Λ', Xi: 'Ξ', Pi: 'Π', Sigma: 'Σ', Upsilon: 'Υ', Phi: 'Φ', Psi: 'Ψ', Omega: 'Ω',
+  // Preserve existing epsilon/phi output; their common variant spellings are aliases.
+  varepsilon: 'ε', varphi: 'φ', vartheta: 'ϑ', varkappa: 'ϰ', varpi: 'ϖ', varrho: 'ϱ', varsigma: 'ς',
+  infty: '∞', emptyset: '∅', varnothing: '∅', sum: '∑', prod: '∏', int: '∫', sqrt: '√', partial: '∂', nabla: '∇', forall: '∀', exists: '∃', in: '∈', ni: '∋', notin: '∉', subset: '⊂', supset: '⊃', subseteq: '⊆', supseteq: '⊇', cup: '∪', cap: '∩',
+  land: '∧', wedge: '∧', lor: '∨', vee: '∨', neg: '¬',
+  rightarrow: '→', to: '→', leftarrow: '←', leftrightarrow: '↔', mapsto: '↦', longrightarrow: '⟶', longleftarrow: '⟵', longleftrightarrow: '⟷',
+  Rightarrow: '⇒', Leftarrow: '⇐', Leftrightarrow: '⇔', geq: '≥', ge: '≥', leq: '≤', le: '≤', neq: '≠', ne: '≠', ll: '≪', gg: '≫', approx: '≈', propto: '∝', equiv: '≡', sim: '∼', simeq: '≃', cong: '≅', perp: '⊥', parallel: '∥', pm: '±', mp: '∓', times: '×', cdot: '⋅', div: '÷', oplus: '⊕', otimes: '⊗',
+  ldots: '…', cdots: '⋯', vdots: '⋮', ddots: '⋱',
 };
-export const ARROWS: Readonly<Record<string, string>> = { '->': '→', '<-': '←', '<->': '↔', '-->': '⟶', '<--': '⟵', '<-->': '⟷', '=>': '⇒', '<=>': '⇔', '^|': '↑', 'v|': '↓', '|^': '↑', '|v': '↓' };
+export const ARROWS: Readonly<Record<string, string>> = { '->': '→', '<-': '←', '<->': '↔', '-->': '⟶', '<--': '⟵', '<-->': '⟷', '=>': '⇒', '<=>': '⇔' };
 export const OPERATORS: Readonly<Record<string, string>> = { '>=': '≥', '<=': '≤', '!=': '≠', '~=': '≈', '+-': '±', '-+': '∓' };
-export interface Match {
+
+function characterMap(source: string, target: string): Readonly<Record<string, string>> {
+  const characters = Array.from(target);
+  return Object.fromEntries(Array.from(source, (character, index) => [character, characters[index]]));
+}
+
+const lookup = (mapping: Readonly<Record<string, string>>, key: string) =>
+  Object.prototype.hasOwnProperty.call(mapping, key) ? mapping[key] : undefined;
+
+// Actual Unicode script/modifier characters, never visual approximations or HTML.
+export const SUPERSCRIPTS = {
+  ...characterMap('0123456789+-=()', '⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁼⁽⁾'),
+  ...characterMap('abcdefghijklmnoprstuvwxyz', 'ᵃᵇᶜᵈᵉᶠᵍʰⁱʲᵏˡᵐⁿᵒᵖʳˢᵗᵘᵛʷˣʸᶻ'),
+  ...characterMap('ABDEGHIJKLMNOPRTUVW', 'ᴬᴮᴰᴱᴳᴴᴵᴶᴷᴸᴹᴺᴼᴾᴿᵀᵁⱽᵂ'),
+  ...characterMap('βγδθφχ', 'ᵝᵞᵟᶿᵠᵡ'),
+  '−': '⁻',
+};
+export const SUBSCRIPTS = {
+  ...characterMap('0123456789+-=()', '₀₁₂₃₄₅₆₇₈₉₊₋₌₍₎'),
+  ...characterMap('aehijklmnoprstuvx', 'ₐₑₕᵢⱼₖₗₘₙₒₚᵣₛₜᵤᵥₓ'),
+  ...characterMap('βγρφχ', 'ᵦᵧᵨᵩᵪ'),
+  '−': '₋',
+};
+
+export interface Conversion {
   from: number;
   to: number;
   source: string;
-  kind: 'symbol' | 'script';
   text: string;
-  sub?: string;
-  sup?: string;
-}
-const identifier = /[\p{L}\p{N}_\\^]/u;
-/** Scan a complete source text leaf. Native Markdown protection is handled by syntax.ts. */
-export function scan(text: string, settings: Settings, offset = 0): Match[] {
-  const result: Match[] = [];
-  let i = 0;
-  const add = (length: number, data: Omit<Match, 'from' | 'to' | 'source'>) => {
-    result.push({ from: offset + i, to: offset + i + length, source: text.slice(i, i + length), ...data });
-    i += length;
-  };
-  while (i < text.length) {
-    const tail = text.slice(i);
-    // Escaped punctuation is consumed atomically; \\alpha must stay a literal command.
-    if (text[i] === '\\') {
-      const command = /^\\([A-Za-z]+)/.exec(tail);
-      if (command) {
-        const value = COMMANDS[command[1]];
-        if (settings.latex && value) add(command[0].length, { kind: 'symbol', text: value });
-        else i += command[0].length;
-      } else i += Math.min(2, tail.length);
-      continue;
-    }
-    // ^| v| |^ |v are vertical arrows; a v must not be part of a word.
-    const vertical = /^(?:[\^v]\||\|[\^v])/.exec(tail);
-    if (vertical && (vertical[0] !== 'v|' || i === 0 || !identifier.test(text[i - 1]))
-      && (vertical[0] !== '|v' || !identifier.test(text[i + 2] ?? ''))) {
-      if (settings.arrows) add(2, { kind: 'symbol', text: ARROWS[vertical[0]] }); else i += 2;
-      continue;
-    }
-    if (settings.scripts && (i === 0 || !identifier.test(text[i - 1]))) {
-      const base = /^(?:[A-Za-z](?=[_^])|[0-9]+(?=\^))/.exec(tail)?.[0];
-      if (base) {
-        const script = readScript(tail, base);
-        if (script) { add(script.length, { kind: 'script', text: base, sub: script.sub, sup: script.sup }); continue; }
-      }
-    }
-    // Consume the entire operator run, even when unknown or its category is disabled.
-    const op = /^[<>!=~+-]+/.exec(tail);
-    if (op) {
-      const value = (settings.arrows ? ARROWS[op[0]] : undefined) ?? (settings.operators ? OPERATORS[op[0]] : undefined);
-      if (value) add(op[0].length, { kind: 'symbol', text: value });
-      else i += op[0].length;
-      continue;
-    }
-    i++;
-  }
-  return result;
 }
 
-/** Letters allow both scripts; digits allow superscripts only. Whitespace ends a script unless wrapped in { }. */
-function readScript(tail: string, base: string): { length: number; sub?: string; sup?: string } | undefined {
-  const allowSubscripts = /[A-Za-z]/.test(base);
-  const result: { length: number; sub?: string; sup?: string } = { length: base.length };
-  let mark = tail[base.length];
-  while (mark === '^' || (allowSubscripts && mark === '_')) {
-    const key = mark === '_' ? 'sub' : 'sup';
-    if (result[key] !== undefined) break;
-    const start = result.length + 1;
-    let end: number, value: string;
-    if (tail[start] === '{') {
-      end = tail.indexOf('}', start);
-      if (end < 0 || /[{\r\n]/.test(tail.slice(start + 1, end))) break;
-      value = tail.slice(start + 1, end); end++;
-    } else {
-      const other = mark === '_' ? '^' : '_';
-      end = start;
-      while (end < tail.length && !/\s/.test(tail[end]) && (!allowSubscripts || tail[end] !== other || result.sub !== undefined || result.sup !== undefined)) end++;
-      value = tail.slice(start, end);
-    }
-    // An empty or broken second part leaves the first one intact.
-    if (!value) break;
-    result[key] = value; result.length = end;
-    mark = tail[end];
-  }
-  return result.sub ?? result.sup ? result : undefined;
+/** Complete a symbol or the nearest script ending at the caret, within the current token. */
+export function conversionAt(source: string, position: number, settings: Settings): Conversion | undefined {
+  const token = /\S+$/.exec(source.slice(0, position))?.[0];
+  if (!token) return;
+  let from = position - token.length;
+  const symbol = (settings.arrows ? lookup(ARROWS, token) : undefined)
+    ?? (settings.operators ? lookup(OPERATORS, token) : undefined)
+    ?? (settings.latex && /^\\[A-Za-z]+$/.test(token) ? lookup(COMMANDS, token.slice(1)) : undefined);
+  if (symbol) return { from, to: position, source: token, text: symbol };
+  if (!settings.scripts) return;
+  const marker = Math.max(token.lastIndexOf('_'), token.lastIndexOf('^'));
+  if (marker < 0) return;
+  const value = token.slice(marker + 1);
+  if (!value) return;
+  const mapping: Readonly<Record<string, string>> = token[marker] === '^' ? SUPERSCRIPTS : SUBSCRIPTS;
+  const characters = Array.from(value, character => mapping[character]);
+  // Convert the entire nearest script or nothing; never fall back to an earlier marker.
+  if (characters.some(character => character === undefined)) return;
+  from += marker;
+  return { from, to: position, source: source.slice(from, position), text: characters.join('') };
 }
